@@ -2,6 +2,8 @@ use std::{collections::HashMap, sync::RwLock};
 
 use rocket::{http::Status, State};
 
+mod files;
+
 #[macro_use]
 extern crate rocket;
 
