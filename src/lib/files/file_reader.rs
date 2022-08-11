@@ -1,4 +1,4 @@
-use std::{io::SeekFrom, marker::PhantomData};
+use std::io::SeekFrom;
 
 use anyhow::Result;
 use rocket::tokio::{
@@ -6,16 +6,17 @@ use rocket::tokio::{
     io::{AsyncReadExt, AsyncSeekExt},
 };
 
-use super::ImmutableFile;
+use super::RWFile;
 
 pub struct FileReader<'a> {
-    lifetime: PhantomData<&'a ImmutableFile>,
+    #[allow(dead_code)]
+    owner: &'a RWFile,
     file: File,
 }
 
 impl<'a> FileReader<'a> {
-    pub fn new(file: File, lifetime: PhantomData<&'a ImmutableFile>) -> Self {
-        FileReader { lifetime, file }
+    pub fn new(file: File, owner: &'a RWFile) -> Self {
+        FileReader { owner, file }
     }
 
     pub async fn size(&mut self) -> Result<u64> {
