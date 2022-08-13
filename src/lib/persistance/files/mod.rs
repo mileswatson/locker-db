@@ -2,7 +2,7 @@ mod file_appender;
 mod file_reader;
 mod rw_file;
 
-use file_appender::FileAppender;
+pub use file_appender::FileAppender;
 pub use file_reader::FileReader;
 pub use rw_file::RWFile;
 
