@@ -1,10 +1,9 @@
-mod file_appender;
-mod file_reader;
-mod rw_file;
+mod appendable_file;
+mod immutable_file;
+mod random;
 
-pub use file_appender::FileAppender;
-pub use file_reader::FileReader;
-pub use rw_file::RWFile;
+pub use appendable_file::AppendableFile;
+pub use immutable_file::ImmutableFile;
 
 #[cfg(test)]
 mod tests {
@@ -12,21 +11,23 @@ mod tests {
 
     use rocket::tokio;
 
-    use super::RWFile;
+    use super::immutable_file::ImmutableFile;
 
     #[tokio::test]
     async fn it_works() {
-        let file = RWFile::new(PathBuf::from("./"), "hello".as_bytes())
+        let file = ImmutableFile::new(PathBuf::from("./"), "hello".as_bytes())
             .await
             .unwrap();
-        let mut reader = file.open().await.unwrap();
+        let mut reader = file.new_reader().await.unwrap();
         assert_eq!(reader.size().await.unwrap(), 5);
         let buf = &mut [0; 3];
         reader.read(2, buf).await.unwrap();
         assert_eq!(buf, "llo".as_bytes());
 
-        let file = RWFile::from_existing(file.path.clone()).await.unwrap();
-        let mut reader = file.open().await.unwrap();
+        let file = ImmutableFile::from_existing(file.path.clone())
+            .await
+            .unwrap();
+        let mut reader = file.new_reader().await.unwrap();
         assert_eq!(reader.size().await.unwrap(), 5);
         let buf = &mut [0; 3];
         reader.read(2, buf).await.unwrap();
