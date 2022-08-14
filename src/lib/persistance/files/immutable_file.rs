@@ -6,7 +6,7 @@ use rocket::tokio::{
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
 };
 
-use super::random::random_filename;
+use super::file_id::FileID;
 
 pub struct ImmutableFile {
     pub(super) path: PathBuf,
@@ -14,7 +14,7 @@ pub struct ImmutableFile {
 
 impl ImmutableFile {
     pub async fn new(dir: PathBuf, data: &[u8]) -> Result<ImmutableFile> {
-        let path = dir.join(random_filename());
+        let path = FileID::new().filepath(dir);
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -27,7 +27,6 @@ impl ImmutableFile {
 
     pub async fn from_existing(path: PathBuf) -> Result<ImmutableFile> {
         OpenOptions::new()
-            .append(true)
             .read(true)
             .open(&path)
             .await?;
@@ -63,5 +62,12 @@ impl<'a> FileReader<'a> {
         self.file.seek(SeekFrom::Start(offset)).await?;
         self.file.read_exact(buffer).await?;
         Ok(())
+    }
+
+    pub async fn read_all(&mut self) -> Result<Vec<u8>> {
+        let mut buf = Vec::with_capacity(self.size().await? as usize);
+        self.file.seek(SeekFrom::Start(0)).await?;
+        self.file.read_exact(&mut buf).await?;
+        Ok(buf)
     }
 }

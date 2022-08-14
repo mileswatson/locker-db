@@ -1,6 +1,6 @@
 mod appendable_file;
 mod immutable_file;
-mod random;
+mod file_id;
 
 pub use appendable_file::AppendableFile;
 pub use immutable_file::ImmutableFile;
