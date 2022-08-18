@@ -1,27 +1,24 @@
-use std::path::PathBuf;
+use std::path::{PathBuf};
 
 use anyhow::Result;
 use rocket::tokio::{
-    fs::{File, OpenOptions},
+    fs::{File, OpenOptions, remove_file},
     io::AsyncWriteExt,
 };
 
 pub struct AppendableFile {
     file: File,
+    path: PathBuf,
 }
 
 impl AppendableFile {
-    pub async fn new(dir: PathBuf, data: &[u8]) -> Result<AppendableFile> {
-        let path = dir.join("WAL");
-        let mut file = OpenOptions::new()
+    pub async fn new(path: PathBuf) -> Result<AppendableFile> {
+        let file = OpenOptions::new()
             .write(true)
-            .append(true)
-            .create_new(true)
+            .create(true)
             .open(&path)
             .await?;
-        file.write_all(data).await?;
-        file.sync_all().await?;
-        Ok(AppendableFile { file })
+        Ok(AppendableFile { file, path })
     }
 
     pub async fn size(&mut self) -> Result<u64> {
@@ -30,7 +27,24 @@ impl AppendableFile {
 
     pub async fn append(&mut self, buffer: &[u8]) -> Result<()> {
         self.file.write_all(buffer).await?;
-        self.file.flush().await?;
+        self.file.sync_data().await?;
+        Ok(())
+    }
+
+    pub async fn clear(&mut self) -> Result<()> {
+        self.file.set_len(0).await?;
+        self.file.sync_all().await?;
+        Ok(())
+    }
+
+    pub async fn close(self) -> Result<()> {
+        self.file.sync_all().await?;
+        drop(self.file);
+        Ok(())
+    }
+
+    pub async fn delete(self) -> Result<()> {
+        remove_file(self.path).await?;
         Ok(())
     }
 }

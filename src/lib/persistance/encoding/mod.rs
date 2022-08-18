@@ -1,11 +1,21 @@
+use rand::Rng;
 use rocket::serde::{Deserialize, Serialize};
 
 pub const KEY_SIZE: usize = 16;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(crate = "rocket::serde")]
 pub enum Key {
     Key([u8; KEY_SIZE]),
+}
+
+impl Key {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Key {
+        let mut bytes: [u8; 16] = [0; 16];
+        rand::thread_rng().fill(&mut bytes);
+        Key::Key(bytes)
+    }
 }
 
 impl AsRef<[u8; KEY_SIZE]> for Key {
@@ -23,7 +33,7 @@ pub struct KeyOffset {
     pub offset: u64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(crate = "rocket::serde")]
 pub struct Entry {
     pub key: Key,

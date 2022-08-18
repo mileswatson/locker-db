@@ -65,7 +65,7 @@ impl<'a> FileReader<'a> {
     }
 
     pub async fn read_all(&mut self) -> Result<Vec<u8>> {
-        let mut buf = Vec::with_capacity(self.size().await? as usize);
+        let mut buf = vec![0; self.size().await? as usize];
         self.file.seek(SeekFrom::Start(0)).await?;
         self.file.read_exact(&mut buf).await?;
         Ok(buf)
