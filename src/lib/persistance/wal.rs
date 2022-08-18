@@ -1,13 +1,17 @@
 use std::{mem::size_of, path::Path};
 
 use anyhow::{Ok, Result};
+use rocket::serde::{Serialize, Deserialize};
 
-use crate::persistance::encoding::Entry;
+use super::files::{AppendableFile, ImmutableFile};
+use crate::encoding::key::{Key, KEY_SIZE};
 
-use super::{
-    encoding::{Key, KEY_SIZE},
-    files::{AppendableFile, ImmutableFile},
-};
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(crate = "rocket::serde")]
+pub struct Entry {
+    pub key: Key,
+    pub data: Vec<u8>,
+}
 
 pub struct WAL {
     file: AppendableFile,
@@ -96,9 +100,9 @@ mod test {
 
     use rocket::tokio;
 
-    use crate::persistance::{
-        encoding::{Entry, Key},
-        wal::WAL,
+    use crate::{
+        encoding::key::Key,
+        persistance::{wal::{WAL, Entry}},
     };
 
     #[tokio::test]
@@ -106,8 +110,7 @@ mod test {
         let (mut wal, remaining) = WAL::open(Path::new("./")).await.unwrap();
         assert_eq!(remaining.len(), 0);
         wal.write(&Entry {
-            key: 
-            Key::new(),
+            key: Key::new(),
             data: "Hi!".bytes().collect(),
         })
         .await

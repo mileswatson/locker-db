@@ -25,17 +25,3 @@ impl AsRef<[u8; KEY_SIZE]> for Key {
         }
     }
 }
-
-#[derive(Serialize, Deserialize)]
-#[serde(crate = "rocket::serde")]
-pub struct KeyOffset {
-    pub key: Key,
-    pub offset: u64,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(crate = "rocket::serde")]
-pub struct Entry {
-    pub key: Key,
-    pub data: Vec<u8>,
-}
