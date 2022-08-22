@@ -1,9 +1,7 @@
 use std::path::Path;
 
-use locker_db::persistance::{
-    encoding::{Entry, Key},
-    wal::WAL,
-};
+use locker_db::encoding::key::Key;
+use locker_db::persistance::wal::{WAL, Entry};
 use rocket::tokio;
 
 #[tokio::main]

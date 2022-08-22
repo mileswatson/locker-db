@@ -1,9 +1,9 @@
 mod appendable_file;
-mod immutable_file;
 mod file_id;
+mod immutable_file;
 
 pub use appendable_file::AppendableFile;
-pub use immutable_file::ImmutableFile;
+pub use immutable_file::{FileReader, ImmutableFile};
 
 #[cfg(test)]
 mod tests {
@@ -19,18 +19,16 @@ mod tests {
             .await
             .unwrap();
         let mut reader = file.new_reader().await.unwrap();
-        assert_eq!(reader.size().await.unwrap(), 5);
-        let buf = &mut [0; 3];
-        reader.read(2, buf).await.unwrap();
+        assert_eq!(reader.size(), 5);
+        let buf = reader.read_fixed::<3>(2).await.unwrap();
         assert_eq!(buf, "llo".as_bytes());
 
         let file = ImmutableFile::from_existing(file.path.clone())
             .await
             .unwrap();
         let mut reader = file.new_reader().await.unwrap();
-        assert_eq!(reader.size().await.unwrap(), 5);
-        let buf = &mut [0; 3];
-        reader.read(2, buf).await.unwrap();
+        assert_eq!(reader.size(), 5);
+        let buf = reader.read_fixed::<3>(2).await.unwrap();
         assert_eq!(buf, "llo".as_bytes());
 
         file.delete().await.unwrap();

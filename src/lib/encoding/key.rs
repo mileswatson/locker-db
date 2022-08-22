@@ -3,7 +3,7 @@ use rocket::serde::{Deserialize, Serialize};
 
 pub const KEY_SIZE: usize = 16;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(crate = "rocket::serde")]
 pub enum Key {
     Key([u8; KEY_SIZE]),
