@@ -1,23 +1,24 @@
-use std::{mem::size_of, path::Path};
+use std::{marker::PhantomData, mem::size_of, path::Path};
 
 use anyhow::{Ok, Result};
-use rocket::serde::{Serialize, Deserialize};
+use rocket::serde::{Deserialize, DeserializeOwned, Serialize};
 
 use super::files::{AppendableFile, ImmutableFile};
 use crate::encoding::key::{Key, KEY_SIZE};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(crate = "rocket::serde")]
-pub struct Entry {
+pub struct Entry<T> {
     pub key: Key,
-    pub data: Vec<u8>,
+    pub data: T,
 }
 
-pub struct WAL {
+pub struct WAL<T: Serialize + DeserializeOwned> {
     file: AppendableFile,
+    log_type: PhantomData<T>,
 }
 
-fn read_entry(mut remaining: &[u8]) -> Option<(Entry, &[u8])> {
+fn read_entry<T: DeserializeOwned>(mut remaining: &[u8]) -> Option<(Entry<T>, &[u8])> {
     if remaining.len() < KEY_SIZE {
         dbg!(remaining.len());
         return None;
@@ -44,21 +45,22 @@ fn read_entry(mut remaining: &[u8]) -> Option<(Entry, &[u8])> {
     Some((
         Entry {
             key,
-            data: data.to_vec(),
+            data: bincode::deserialize(data).ok()?,
         },
         remaining,
     ))
 }
 
-impl WAL {
-    pub async fn write(&mut self, entry: &Entry) -> Result<()> {
+impl<T: Serialize + DeserializeOwned> WAL<T> {
+    pub async fn write(&mut self, entry: &Entry<T>) -> Result<()> {
+        let bytes = bincode::serialize(&entry.data)?;
         self.file.append(entry.key.as_ref()).await?;
-        self.file.append(&entry.data.len().to_be_bytes()).await?;
-        self.file.append(&entry.data).await?;
+        self.file.append(&bytes.len().to_be_bytes()).await?;
+        self.file.append(&bytes).await?;
         Ok(())
     }
 
-    pub async fn open(dir: &Path) -> Result<(WAL, Vec<Entry>)> {
+    pub async fn open(dir: &Path) -> Result<(WAL<T>, Vec<Entry<T>>)> {
         let mut entries = Vec::new();
 
         if let Result::Ok(file) = ImmutableFile::from_existing(dir.join("WAL")).await {
@@ -74,6 +76,7 @@ impl WAL {
 
         let wal = WAL {
             file: AppendableFile::new(dir.join("WAL")).await?,
+            log_type: PhantomData::default()
         };
 
         Ok((wal, entries))
@@ -102,33 +105,33 @@ mod test {
 
     use crate::{
         encoding::key::Key,
-        persistance::{wal::{WAL, Entry}},
+        persistance::wal::{Entry, WAL},
     };
 
     #[tokio::test]
     pub async fn wal_test() {
-        let (mut wal, remaining) = WAL::open(Path::new("./")).await.unwrap();
+        let (mut wal, remaining) = WAL::<String>::open(Path::new("./")).await.unwrap();
         assert_eq!(remaining.len(), 0);
         wal.write(&Entry {
             key: Key::new(),
-            data: "Hi!".bytes().collect(),
+            data: "Hi!".to_string(),
         })
         .await
         .unwrap();
         wal.write(&Entry {
             key: Key::new(),
-            data: "Hello there!".bytes().collect(),
+            data: "Hello there!".to_string(),
         })
         .await
         .unwrap();
         wal.write(&Entry {
             key: Key::new(),
-            data: "Sup bro".bytes().collect(),
+            data: "Sup bro".to_string(),
         })
         .await
         .unwrap();
         wal.close().await.unwrap();
-        let (w, remaining) = WAL::open(Path::new("./")).await.unwrap();
+        let (w, remaining) = WAL::<String>::open(Path::new("./")).await.unwrap();
         w.delete().await.unwrap();
         dbg!(remaining);
     }

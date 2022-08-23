@@ -3,7 +3,7 @@ use std::{cmp::Ordering, marker::PhantomData};
 use anyhow::{anyhow, Result};
 use rocket::{
     serde::{Deserialize, DeserializeOwned, Serialize},
-    tokio::join,
+    tokio::join, futures::future::join,
 };
 
 use crate::{
@@ -35,6 +35,14 @@ impl<T> SSTable<T> {
             strings: strings?,
             entry_type: self.entry_type,
         })
+    }
+
+    pub async fn delete(self) -> Result<()> {
+        let deletions = join(self.offsets.delete(), self.strings.delete()).await;
+        match deletions {
+            (Ok(_), Ok(_)) => Ok(()),
+            _ => Err(anyhow!("Failed to delete SSTable!"))
+        }
     }
 }
 
@@ -70,7 +78,7 @@ impl<'a, T: DeserializeOwned> SSTableReader<'a, T> {
         self.read_string(&offset).await
     }
 
-    pub async fn read_offset(&mut self, index: u64) -> Result<OffsetEntry> {
+    async fn read_offset(&mut self, index: u64) -> Result<OffsetEntry> {
         let buf: [u8; ENTRY_SIZE] = self
             .offsets
             .read_fixed(index * ENTRY_SIZE as u64)
@@ -85,7 +93,7 @@ impl<'a, T: DeserializeOwned> SSTableReader<'a, T> {
         })
     }
 
-    pub async fn read_string(
+    async fn read_string(
         &mut self,
         OffsetEntry { offset, length, .. }: &OffsetEntry,
     ) -> Result<T> {

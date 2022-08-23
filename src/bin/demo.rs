@@ -6,26 +6,26 @@ use rocket::tokio;
 
 #[tokio::main]
 async fn main() {
-    let (mut wal, _) = WAL::open(Path::new("./")).await.unwrap();
+    let (mut wal, _) = WAL::<String>::open(Path::new("./")).await.unwrap();
     wal.write(&Entry {
         key: Key::new(),
-        data: "Hi!".bytes().collect(),
+        data: "Hi!".to_string(),
     })
     .await
     .unwrap();
     wal.write(&Entry {
         key: Key::new(),
-        data: "Hello there!".bytes().collect(),
+        data: "Hello there!".to_string(),
     })
     .await
     .unwrap();
     wal.write(&Entry {
         key: Key::new(),
-        data: "Sup bro".bytes().collect(),
+        data: "Sup bro".to_string(),
     })
     .await
     .unwrap();
     wal.close().await.unwrap();
-    let (_, remaining) = WAL::open(Path::new("./")).await.unwrap();
+    let (_, remaining) = WAL::<String>::open(Path::new("./")).await.unwrap();
     dbg!(remaining);
 }
