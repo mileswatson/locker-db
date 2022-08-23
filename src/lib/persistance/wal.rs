@@ -1,32 +1,17 @@
 use std::{marker::PhantomData, mem::size_of, path::Path};
 
 use anyhow::{Ok, Result};
-use rocket::serde::{Deserialize, DeserializeOwned, Serialize};
+use rocket::serde::{DeserializeOwned, Serialize};
 
 use super::files::{AppendableFile, ImmutableFile};
-use crate::encoding::key::{Key, KEY_SIZE};
 
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(crate = "rocket::serde")]
-pub struct Entry<T> {
-    pub key: Key,
-    pub data: T,
-}
 
 pub struct WAL<T: Serialize + DeserializeOwned> {
     file: AppendableFile,
     log_type: PhantomData<T>,
 }
 
-fn read_entry<T: DeserializeOwned>(mut remaining: &[u8]) -> Option<(Entry<T>, &[u8])> {
-    if remaining.len() < KEY_SIZE {
-        dbg!(remaining.len());
-        return None;
-    }
-    let key_bytes: &[u8];
-    (key_bytes, remaining) = remaining.split_at(KEY_SIZE);
-    let key = Key::Key(key_bytes.try_into().unwrap());
-
+fn read_entry<T: DeserializeOwned>(mut remaining: &[u8]) -> Option<(T, &[u8])> {
     if remaining.len() < size_of::<u64>() {
         dbg!(remaining.len());
         return None;
@@ -43,24 +28,20 @@ fn read_entry<T: DeserializeOwned>(mut remaining: &[u8]) -> Option<(Entry<T>, &[
     (data, remaining) = remaining.split_at(size);
 
     Some((
-        Entry {
-            key,
-            data: bincode::deserialize(data).ok()?,
-        },
+        bincode::deserialize(data).ok()?,
         remaining,
     ))
 }
 
 impl<T: Serialize + DeserializeOwned> WAL<T> {
-    pub async fn write(&mut self, entry: &Entry<T>) -> Result<()> {
-        let bytes = bincode::serialize(&entry.data)?;
-        self.file.append(entry.key.as_ref()).await?;
+    pub async fn write(&mut self, item: &T) -> Result<()> {
+        let bytes = bincode::serialize(&item)?;
         self.file.append(&bytes.len().to_be_bytes()).await?;
         self.file.append(&bytes).await?;
         Ok(())
     }
 
-    pub async fn open(dir: &Path) -> Result<(WAL<T>, Vec<Entry<T>>)> {
+    pub async fn open(dir: &Path) -> Result<(WAL<T>, Vec<T>)> {
         let mut entries = Vec::new();
 
         if let Result::Ok(file) = ImmutableFile::from_existing(dir.join("WAL")).await {
@@ -104,35 +85,25 @@ mod test {
     use rocket::tokio;
 
     use crate::{
-        encoding::key::Key,
-        persistance::wal::{Entry, WAL},
+        persistance::wal::{WAL},
     };
 
     #[tokio::test]
     pub async fn wal_test() {
         let (mut wal, remaining) = WAL::<String>::open(Path::new("./")).await.unwrap();
         assert_eq!(remaining.len(), 0);
-        wal.write(&Entry {
-            key: Key::new(),
-            data: "Hi!".to_string(),
-        })
+        wal.write(&"Hi!".to_string())
         .await
         .unwrap();
-        wal.write(&Entry {
-            key: Key::new(),
-            data: "Hello there!".to_string(),
-        })
+        wal.write(&"Hello there!".to_string())
         .await
         .unwrap();
-        wal.write(&Entry {
-            key: Key::new(),
-            data: "Sup bro".to_string(),
-        })
+        wal.write(&"Sup bro".to_string())
         .await
         .unwrap();
         wal.close().await.unwrap();
         let (w, remaining) = WAL::<String>::open(Path::new("./")).await.unwrap();
         w.delete().await.unwrap();
-        dbg!(remaining);
+        assert_eq!(remaining, vec!["Hi!", "Hello there!", "Sup bro"]);
     }
 }
