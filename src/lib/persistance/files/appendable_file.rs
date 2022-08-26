@@ -37,10 +37,9 @@ impl AppendableFile {
         Ok(())
     }
 
-    pub async fn close(self) -> Result<()> {
+    pub async fn close(self) -> Result<PathBuf> {
         self.file.sync_all().await?;
-        drop(self.file);
-        Ok(())
+        Ok(self.path)
     }
 
     pub async fn delete(self) -> Result<()> {

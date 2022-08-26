@@ -1,44 +1,56 @@
-use std::marker::PhantomData;
-use std::path::Path;
+use std::{marker::PhantomData, path::PathBuf};
 
-use anyhow::Result;
-use dashmap::DashMap;
-use rocket::serde::{DeserializeOwned, Serialize};
-use rocket::tokio::sync::Mutex;
+use dashmap::ReadOnlyView;
+use rocket::{
+    serde::Serialize,
+    tokio::{fs::remove_file, join},
+};
 
-use crate::encoding::entry::EntryData;
-use crate::encoding::{entry::Entry, key::Key};
-use crate::persistance::wal::WAL;
+use crate::{
+    encoding::{entry::EntryData, key::Key},
+    persistance::files::{AppendableFile, FileID},
+};
 
-pub struct SSTableBuilder<T: Serialize + DeserializeOwned> {
-    entries: DashMap<Key, EntryData<T>>,
-    file: Mutex<WAL<Entry<T>>>,
+use super::sstable::{OffsetEntry, SSTable};
+
+pub struct SSTableBuilder<T: Serialize> {
+    entries: ReadOnlyView<Key, EntryData<T>>,
+    path: PathBuf,
     entry_type: PhantomData<T>,
 }
 
-impl<T: Serialize + DeserializeOwned + Clone> SSTableBuilder<T> {
-    pub async fn write(&self, entry: Entry<T>) -> Result<()> {
-        let mut file = self.file.lock().await;
-        file.write(&entry).await?;
-        self.entries.insert(entry.key, entry.data);
-        drop(file);
-        Ok(())
+impl<T: Serialize> SSTableBuilder<T> {
+    pub fn read(&self, key: &Key) -> Option<&EntryData<T>> {
+        self.entries.get(key)
     }
 
-    pub fn read(&self, key: &Key) -> Option<EntryData<T>> {
-        self.entries.get(key).map(|x| x.clone())
-    }
-
-    pub async fn from(path: &Path) -> SSTableBuilder<T> {
-        let (wal, existing) = WAL::<Entry<T>>::open(path).await.unwrap();
-        SSTableBuilder {
-            entries: existing.into_iter().map(|x| (x.key, x.data)).collect(),
-            file: Mutex::new(wal),
-            entry_type: PhantomData::default()
+    pub async fn build(&self) -> SSTable<T> {
+        let mut entries: Vec<_> = self.entries.iter().collect();
+        entries.sort_by_key(|x| x.0);
+        let new = || AppendableFile::new(FileID::new().filepath(PathBuf::from("./")));
+        let (offsets, strings) = join!(new(), new());
+        let (mut offsets, mut strings) = (offsets.unwrap(), strings.unwrap());
+        let mut offset = 0;
+        for (k, v) in entries {
+            let string_bytes = bincode::serialize(v).unwrap();
+            let offset_entry = OffsetEntry {
+                key: k.clone(),
+                offset,
+                length: string_bytes.len() as u64,
+            };
+            let offset_entry_bytes = bincode::serialize(&offset_entry).unwrap();
+            strings.append(&string_bytes).await.unwrap();
+            offsets.append(&offset_entry_bytes).await.unwrap();
+            offset += string_bytes.len() as u64;
         }
+        SSTable::new(
+            offsets.close().await.unwrap(),
+            strings.close().await.unwrap(),
+        )
+        .await
     }
 
-    pub async fn close(self) -> Result<()> {
-        self.file.into_inner().close().await
+    pub async fn delete(self) {
+        remove_file(&self.path).await.unwrap();
     }
 }

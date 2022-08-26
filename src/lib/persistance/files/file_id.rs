@@ -18,3 +18,9 @@ impl FileID {
         dir.join(&self.id)
     }
 }
+
+impl Default for FileID {
+    fn default() -> Self {
+        Self::new()
+    }
+}

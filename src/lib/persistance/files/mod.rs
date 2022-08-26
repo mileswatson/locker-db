@@ -4,6 +4,7 @@ mod immutable_file;
 
 pub use appendable_file::AppendableFile;
 pub use immutable_file::{FileReader, ImmutableFile};
+pub use file_id::FileID;
 
 #[cfg(test)]
 mod tests {
