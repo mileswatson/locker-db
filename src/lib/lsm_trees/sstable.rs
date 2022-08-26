@@ -7,7 +7,7 @@ use rocket::{
 };
 
 use crate::{
-    encoding::key::{Key, KEY_SIZE},
+    encoding::{key::{Key, KEY_SIZE}, entry::EntryData},
     persistance::files::{FileReader, ImmutableFile},
 };
 
@@ -53,14 +53,14 @@ pub struct SSTableReader<'a, T> {
 }
 
 impl<'a, T: DeserializeOwned> SSTableReader<'a, T> {
-    pub async fn read(&mut self, key: Key) -> Result<T> {
+    pub async fn read(&mut self, key: Key) -> Option<EntryData<T>> {
         let size: u64 = self.offsets.size() / (ENTRY_SIZE as u64);
         let mut lower = 0;
         let mut upper = size / (ENTRY_SIZE as u64);
         let mut found = None;
         while lower < upper {
             let mid = (lower + upper) / 2;
-            let offset = self.read_offset(mid).await?;
+            let offset = self.read_offset(mid).await;
             match key.cmp(&offset.key) {
                 Ordering::Equal => {
                     found = Some(offset);
@@ -74,29 +74,29 @@ impl<'a, T: DeserializeOwned> SSTableReader<'a, T> {
                 }
             }
         }
-        let offset = found.ok_or_else(|| anyhow!("Could not find key!"))?;
-        self.read_string(&offset).await
+        let offset = found?;
+        self.read_string(&offset).await.unwrap()
     }
 
-    async fn read_offset(&mut self, index: u64) -> Result<OffsetEntry> {
+    async fn read_offset(&mut self, index: u64) -> OffsetEntry {
         let buf: [u8; ENTRY_SIZE] = self
             .offsets
             .read_fixed(index * ENTRY_SIZE as u64)
-            .await?;
+            .await.unwrap();
         let key: [u8; KEY_SIZE] = buf[..KEY_SIZE].try_into().unwrap();
         let offset = u64::from_be_bytes(buf[KEY_SIZE..KEY_SIZE + 4].try_into().unwrap());
         let length = u64::from_be_bytes(buf[KEY_SIZE + 4..].try_into().unwrap());
-        Ok(OffsetEntry {
+        OffsetEntry {
             key: Key::Key(key),
             offset,
             length,
-        })
+        }
     }
 
     async fn read_string(
         &mut self,
         OffsetEntry { offset, length, .. }: &OffsetEntry,
-    ) -> Result<T> {
+    ) -> Result<Option<EntryData<T>>> {
         let buf = self.strings.read(*offset, *length).await?;
         Ok(bincode::deserialize(&buf)?)
     }
