@@ -1,10 +1,9 @@
-use std::{marker::PhantomData, mem::size_of, path::Path};
+use std::{marker::PhantomData, mem::size_of, path::PathBuf};
 
 use anyhow::{Ok, Result};
 use rocket::serde::{DeserializeOwned, Serialize};
 
 use super::files::{AppendableFile, ImmutableFile};
-
 
 pub struct WAL<T: Serialize + DeserializeOwned> {
     file: AppendableFile,
@@ -13,7 +12,6 @@ pub struct WAL<T: Serialize + DeserializeOwned> {
 
 fn read_entry<T: DeserializeOwned>(mut remaining: &[u8]) -> Option<(T, &[u8])> {
     if remaining.len() < size_of::<u64>() {
-        dbg!(remaining.len());
         return None;
     }
     let size_bytes: &[u8];
@@ -21,16 +19,12 @@ fn read_entry<T: DeserializeOwned>(mut remaining: &[u8]) -> Option<(T, &[u8])> {
     let size = u64::from_be_bytes(size_bytes.try_into().unwrap()) as usize;
 
     if remaining.len() < size {
-        dbg!(remaining.len(), size);
         return None;
     }
     let data: &[u8];
     (data, remaining) = remaining.split_at(size);
 
-    Some((
-        bincode::deserialize(data).ok()?,
-        remaining,
-    ))
+    Some((bincode::deserialize(data).ok()?, remaining))
 }
 
 impl<T: Serialize + DeserializeOwned> WAL<T> {
@@ -41,10 +35,10 @@ impl<T: Serialize + DeserializeOwned> WAL<T> {
         Ok(())
     }
 
-    pub async fn open(dir: &Path) -> Result<(WAL<T>, Vec<T>)> {
+    pub async fn open(path: PathBuf) -> Result<(WAL<T>, Vec<T>)> {
         let mut entries = Vec::new();
 
-        if let Result::Ok(file) = ImmutableFile::from_existing(dir.join("WAL")).await {
+        if let Result::Ok(file) = ImmutableFile::from_existing(path.clone()).await {
             let mut reader = file.new_reader().await?;
             let bytes = reader.read_all().await?;
             let mut remaining = bytes.as_slice();
@@ -56,8 +50,8 @@ impl<T: Serialize + DeserializeOwned> WAL<T> {
         };
 
         let wal = WAL {
-            file: AppendableFile::new(dir.join("WAL")).await?,
-            log_type: PhantomData::default()
+            file: AppendableFile::new(path).await?,
+            log_type: PhantomData::default(),
         };
 
         Ok((wal, entries))
@@ -67,9 +61,8 @@ impl<T: Serialize + DeserializeOwned> WAL<T> {
         self.file.clear().await
     }
 
-    pub async fn close(self) -> Result<()> {
-        self.file.close().await?;
-        Ok(())
+    pub async fn close(self) -> Result<PathBuf> {
+        self.file.close().await
     }
 
     pub async fn delete(self) -> Result<()> {
@@ -80,29 +73,25 @@ impl<T: Serialize + DeserializeOwned> WAL<T> {
 
 #[cfg(test)]
 mod test {
-    use std::path::Path;
+    use std::path::PathBuf;
 
     use rocket::tokio;
 
-    use crate::{
-        persistance::wal::{WAL},
-    };
+    use crate::persistance::wal::WAL;
 
     #[tokio::test]
     pub async fn wal_test() {
-        let (mut wal, remaining) = WAL::<String>::open(Path::new("./")).await.unwrap();
+        let (mut wal, remaining) = WAL::<String>::open(PathBuf::from("./983724.wal"))
+            .await
+            .unwrap();
         assert_eq!(remaining.len(), 0);
-        wal.write(&"Hi!".to_string())
-        .await
-        .unwrap();
-        wal.write(&"Hello there!".to_string())
-        .await
-        .unwrap();
-        wal.write(&"Sup bro".to_string())
-        .await
-        .unwrap();
+        wal.write(&"Hi!".to_string()).await.unwrap();
+        wal.write(&"Hello there!".to_string()).await.unwrap();
+        wal.write(&"Sup bro".to_string()).await.unwrap();
         wal.close().await.unwrap();
-        let (w, remaining) = WAL::<String>::open(Path::new("./")).await.unwrap();
+        let (w, remaining) = WAL::<String>::open(PathBuf::from("./983724.wal"))
+            .await
+            .unwrap();
         w.delete().await.unwrap();
         assert_eq!(remaining, vec!["Hi!", "Hello there!", "Sup bro"]);
     }

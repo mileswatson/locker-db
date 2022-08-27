@@ -17,7 +17,7 @@ use crate::{
 
 const ENTRY_SIZE: usize = KEY_SIZE + 16;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(crate = "rocket::serde")]
 pub struct OffsetEntry {
     pub key: Key,
@@ -65,14 +65,13 @@ pub struct SSTableReader<'a, T> {
 }
 
 impl<'a, T: DeserializeOwned> SSTableReader<'a, T> {
-    pub async fn read(&mut self, key: Key) -> Option<EntryData<T>> {
-        let size: u64 = self.offsets.size() / (ENTRY_SIZE as u64);
+    pub async fn read(&mut self, key: &Key) -> Option<EntryData<T>> {
         let mut lower = 0;
-        let mut upper = size / (ENTRY_SIZE as u64);
+        let mut upper = self.offsets.size() / (ENTRY_SIZE as u64);
         let mut found = None;
         while lower < upper {
             let mid = (lower + upper) / 2;
-            let offset = self.read_offset(mid).await;
+            let offset = self.read_offset(mid).await.unwrap();
             match key.cmp(&offset.key) {
                 Ordering::Equal => {
                     found = Some(offset);
@@ -87,29 +86,28 @@ impl<'a, T: DeserializeOwned> SSTableReader<'a, T> {
             }
         }
         let offset = found?;
-        self.read_string(&offset).await.unwrap()
+        Some(self.read_string(&offset).await.unwrap())
     }
 
-    async fn read_offset(&mut self, index: u64) -> OffsetEntry {
+    async fn read_offset(&mut self, index: u64) -> Result<OffsetEntry> {
         let buf: [u8; ENTRY_SIZE] = self
             .offsets
             .read_fixed(index * ENTRY_SIZE as u64)
-            .await
-            .unwrap();
+            .await?;
         let key: [u8; KEY_SIZE] = buf[..KEY_SIZE].try_into().unwrap();
-        let offset = u64::from_be_bytes(buf[KEY_SIZE..KEY_SIZE + 4].try_into().unwrap());
-        let length = u64::from_be_bytes(buf[KEY_SIZE + 4..].try_into().unwrap());
-        OffsetEntry {
+        let offset = u64::from_be_bytes(buf[KEY_SIZE..KEY_SIZE + 8].try_into().unwrap());
+        let length = u64::from_be_bytes(buf[KEY_SIZE + 8..].try_into().unwrap());
+        Ok(OffsetEntry {
             key: Key::Key(key),
             offset,
             length,
-        }
+        })
     }
 
     async fn read_string(
         &mut self,
         OffsetEntry { offset, length, .. }: &OffsetEntry,
-    ) -> Result<Option<EntryData<T>>> {
+    ) -> Result<EntryData<T>> {
         let buf = self.strings.read(*offset, *length).await?;
         Ok(bincode::deserialize(&buf)?)
     }

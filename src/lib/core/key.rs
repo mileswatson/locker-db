@@ -16,6 +16,12 @@ impl Key {
         rand::thread_rng().fill(&mut bytes);
         Key::Key(bytes)
     }
+
+    pub fn bytes(&self) -> &[u8; KEY_SIZE] {
+        match self {
+            Key::Key(b) => b
+        }
+    }
 }
 
 impl AsRef<[u8; KEY_SIZE]> for Key {
