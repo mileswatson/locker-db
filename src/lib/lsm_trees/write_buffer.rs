@@ -6,8 +6,8 @@ use dashmap::DashMap;
 use rocket::serde::{DeserializeOwned, Serialize};
 use rocket::tokio::sync::Mutex;
 
-use crate::encoding::entry::EntryData;
-use crate::encoding::{entry::Entry, key::Key};
+use crate::core::entry::EntryData;
+use crate::core::{entry::Entry, key::Key};
 use crate::persistance::wal::WAL;
 
 pub struct WriteBuffer<T: Serialize + DeserializeOwned> {

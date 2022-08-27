@@ -6,16 +6,13 @@ use rocket::tokio::{
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
 };
 
-use super::file_id::FileID;
-
 pub struct ImmutableFile {
     pub(super) path: PathBuf,
     pub(super) size: u64,
 }
 
 impl ImmutableFile {
-    pub async fn new(dir: PathBuf, data: &[u8]) -> Result<ImmutableFile> {
-        let path = FileID::new().filepath(dir);
+    pub async fn create(path: PathBuf, data: &[u8]) -> Result<ImmutableFile> {
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)

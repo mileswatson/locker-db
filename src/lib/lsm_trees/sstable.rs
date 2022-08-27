@@ -8,7 +8,7 @@ use rocket::{
 };
 
 use crate::{
-    encoding::{
+    core::{
         entry::EntryData,
         key::{Key, KEY_SIZE},
     },

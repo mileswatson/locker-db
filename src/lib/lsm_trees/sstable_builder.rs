@@ -3,12 +3,12 @@ use std::{marker::PhantomData, path::PathBuf};
 use dashmap::ReadOnlyView;
 use rocket::{
     serde::Serialize,
-    tokio::{fs::remove_file, join},
+    tokio::{fs::remove_file},
 };
 
 use crate::{
-    encoding::{entry::EntryData, key::Key},
-    persistance::files::{AppendableFile, FileID},
+    core::{entry::EntryData, key::Key},
+    persistance::files::{AppendableFile},
 };
 
 use super::sstable::{OffsetEntry, SSTable};
@@ -27,9 +27,10 @@ impl<T: Serialize> SSTableBuilder<T> {
     pub async fn build(&self) -> SSTable<T> {
         let mut entries: Vec<_> = self.entries.iter().collect();
         entries.sort_by_key(|x| x.0);
-        let new = || AppendableFile::new(FileID::new().filepath(PathBuf::from("./")));
-        let (offsets, strings) = join!(new(), new());
-        let (mut offsets, mut strings) = (offsets.unwrap(), strings.unwrap());
+
+        let mut offsets = AppendableFile::new(self.path.with_extension("offsets")).await.unwrap();
+        let mut strings = AppendableFile::new(self.path.with_extension("strings")).await.unwrap();
+
         let mut offset = 0;
         for (k, v) in entries {
             let string_bytes = bincode::serialize(v).unwrap();

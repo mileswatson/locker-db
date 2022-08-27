@@ -1,3 +1,3 @@
-pub mod encoding;
+pub mod core;
 pub mod lsm_trees;
 pub mod persistance;

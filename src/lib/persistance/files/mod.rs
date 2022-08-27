@@ -1,10 +1,8 @@
 mod appendable_file;
-mod file_id;
 mod immutable_file;
 
 pub use appendable_file::AppendableFile;
 pub use immutable_file::{FileReader, ImmutableFile};
-pub use file_id::FileID;
 
 #[cfg(test)]
 mod tests {
@@ -16,7 +14,7 @@ mod tests {
 
     #[tokio::test]
     async fn it_works() {
-        let file = ImmutableFile::new(PathBuf::from("./"), "hello".as_bytes())
+        let file = ImmutableFile::create(PathBuf::from("./837456"), "hello".as_bytes())
             .await
             .unwrap();
         let mut reader = file.new_reader().await.unwrap();
