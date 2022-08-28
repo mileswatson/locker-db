@@ -1,4 +1,3 @@
-use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
@@ -19,7 +18,7 @@ pub struct WriteBuffer<T: Serialize + DeserializeOwned> {
     entry_type: PhantomData<T>,
 }
 
-impl<T: Serialize + DeserializeOwned + Clone + Debug + PartialEq> WriteBuffer<T> {
+impl<T: Serialize + DeserializeOwned + Clone> WriteBuffer<T> {
     pub async fn create(path: PathBuf) -> WriteBuffer<T> {
         let (wal, existing) = WAL::<Entry<T>>::open(path).await.unwrap();
         WriteBuffer {

@@ -1,4 +1,4 @@
-use std::{fmt::Debug, marker::PhantomData, path::PathBuf};
+use std::{marker::PhantomData, path::PathBuf};
 
 use dashmap::ReadOnlyView;
 use rocket::{
@@ -19,7 +19,7 @@ pub struct SSTableBuilder<T: Serialize> {
     entry_type: PhantomData<T>,
 }
 
-impl<T: Serialize + Debug + DeserializeOwned + PartialEq> SSTableBuilder<T> {
+impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
     pub fn new(entries: ReadOnlyView<Key, EntryData<T>>, path: PathBuf) -> SSTableBuilder<T> {
         SSTableBuilder {
             entries,
