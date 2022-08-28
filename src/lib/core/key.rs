@@ -19,7 +19,7 @@ impl Key {
 
     pub fn bytes(&self) -> &[u8; KEY_SIZE] {
         match self {
-            Key::Key(b) => b
+            Key::Key(b) => b,
         }
     }
 }

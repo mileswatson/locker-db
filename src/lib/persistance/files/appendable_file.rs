@@ -1,8 +1,8 @@
-use std::path::{PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Result;
 use rocket::tokio::{
-    fs::{File, OpenOptions, remove_file},
+    fs::{remove_file, File, OpenOptions},
     io::AsyncWriteExt,
 };
 
