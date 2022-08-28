@@ -65,6 +65,11 @@ pub struct SSTableReader<'a, T> {
 }
 
 impl<'a, T: DeserializeOwned> SSTableReader<'a, T> {
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> u64 {
+        self.offsets.size() / (ENTRY_SIZE as u64)
+    }
+
     pub async fn read(&mut self, key: &Key) -> Option<EntryData<T>> {
         let mut lower = 0;
         let mut upper = self.offsets.size() / (ENTRY_SIZE as u64);
@@ -89,11 +94,17 @@ impl<'a, T: DeserializeOwned> SSTableReader<'a, T> {
         Some(self.read_string(&offset).await.unwrap())
     }
 
+    pub async fn read_index(&mut self, index: u64) -> Option<EntryData<T>> {
+        if index < self.len() {
+            let offset = self.read_offset(index).await.unwrap();
+            Some(self.read_string(&offset).await.unwrap())
+        } else {
+            None
+        }
+    }
+
     async fn read_offset(&mut self, index: u64) -> Result<OffsetEntry> {
-        let buf: [u8; ENTRY_SIZE] = self
-            .offsets
-            .read_fixed(index * ENTRY_SIZE as u64)
-            .await?;
+        let buf: [u8; ENTRY_SIZE] = self.offsets.read_fixed(index * ENTRY_SIZE as u64).await?;
         let key: [u8; KEY_SIZE] = buf[..KEY_SIZE].try_into().unwrap();
         let offset = u64::from_be_bytes(buf[KEY_SIZE..KEY_SIZE + 8].try_into().unwrap());
         let length = u64::from_be_bytes(buf[KEY_SIZE + 8..].try_into().unwrap());

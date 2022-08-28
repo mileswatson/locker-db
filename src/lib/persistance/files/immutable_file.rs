@@ -51,7 +51,7 @@ impl<'a> FileReader<'a> {
         FileReader { owner, file }
     }
 
-    pub fn size(&mut self) -> u64 {
+    pub fn size(&self) -> u64 {
         self.owner.size
     }
 
