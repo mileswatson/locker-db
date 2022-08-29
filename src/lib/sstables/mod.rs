@@ -20,10 +20,10 @@ mod tests {
         let wb = WriteBuffer::create(PathBuf::from("./12398123.wal")).await;
         let (k1, k2, k3) = (Key::new(), Key::new(), Key::new());
         let sequence = vec![
-            Entry::new(k1.clone(), EntryData::Data("okay1".to_string())),
-            Entry::new(k2.clone(), EntryData::Data("ok2".into())),
-            Entry::new(k1.clone(), EntryData::Deleted),
-            Entry::new(k3.clone(), EntryData::Data("okayyy3".into())),
+            Entry::new(k1, EntryData::Data("okay1".to_string())),
+            Entry::new(k2, EntryData::Data("ok2".into())),
+            Entry::new(k1, EntryData::Deleted),
+            Entry::new(k3, EntryData::Data("okayyy3".into())),
         ];
         for x in sequence {
             wb.write(x).await
