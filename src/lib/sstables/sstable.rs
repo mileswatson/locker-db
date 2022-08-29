@@ -94,10 +94,11 @@ impl<'a, T: DeserializeOwned> SSTableReader<'a, T> {
         Some(self.read_string(&offset).await.unwrap())
     }
 
-    pub async fn read_index(&mut self, index: u64) -> Option<EntryData<T>> {
+    pub async fn read_index(&mut self, index: u64) -> Option<(Key, EntryData<T>)> {
         if index < self.len() {
             let offset = self.read_offset(index).await.unwrap();
-            Some(self.read_string(&offset).await.unwrap())
+            let data = self.read_string(&offset).await.unwrap();
+            Some((offset.key, data))
         } else {
             None
         }
