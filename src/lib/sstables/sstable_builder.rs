@@ -123,16 +123,20 @@ impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
                     entries.1 = old.read_index(indexes.1).await;
                 }
                 (Some((k0, ref d0)), Some((k1, ref d1))) => {
-                    if k0 < k1 {
+                    if k0 <= k1 {
                         copy_entry(&mut offsets, &mut strings, &mut offset, k0, d0).await;
                         indexes.0 += 1;
                         entries.0 = young.read_index(indexes.0).await;
+                        if k0 == k1 {
+                            indexes.1 += 1;
+                            entries.1 = old.read_index(indexes.1).await;
+                        }
                     } else {
                         copy_entry(&mut offsets, &mut strings, &mut offset, k1, d1).await;
                         indexes.1 += 1;
                         entries.1 = old.read_index(indexes.1).await;
                     }
-                },
+                }
             }
         }
 
@@ -145,5 +149,40 @@ impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
 
     pub async fn delete(self) {
         remove_file(&self.path).await.unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use rocket::tokio;
+
+    use crate::{
+        core::{
+            entry::{Entry, EntryData},
+            key::Key,
+        },
+        sstables::write_buffer::WriteBuffer,
+    };
+
+    #[tokio::test]
+    async fn test() {
+        let wb = WriteBuffer::create(PathBuf::from("./123987578")).await;
+        let (k1, k2, k3) = (Key::new(), Key::new(), Key::new());
+        let sequence = vec![
+            Entry::new(k1, EntryData::Data("okay1".to_string())),
+            Entry::new(k2, EntryData::Data("ok2".into())),
+            Entry::new(k1, EntryData::Deleted),
+            Entry::new(k3, EntryData::Data("okayyy3".into())),
+        ];
+        for x in sequence {
+            wb.write(x).await
+        }
+        let b = wb.to_builder().await;
+        assert_eq!(b.read(&k1), Some(&EntryData::Deleted));
+        assert_eq!(b.read(&k2), Some(&EntryData::Data("ok2".into())));
+        assert_eq!(b.read(&k3), Some(&EntryData::Data("okayyy3".into())));
+        b.delete().await;
     }
 }

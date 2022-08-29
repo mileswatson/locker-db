@@ -124,3 +124,86 @@ impl<'a, T: DeserializeOwned> SSTableReader<'a, T> {
         Ok(bincode::deserialize(&buf)?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use rocket::tokio;
+
+    use crate::{
+        core::{
+            entry::{Entry, EntryData},
+            key::Key,
+        },
+        sstables::{sstable_builder::SSTableBuilder, write_buffer::WriteBuffer},
+    };
+
+    use super::SSTable;
+
+    async fn build_sstable(
+        sequence: impl IntoIterator<Item = Entry<String>>,
+        path: PathBuf,
+    ) -> SSTable<String> {
+        let wb = WriteBuffer::create(path.with_extension("wal")).await;
+        for x in sequence {
+            wb.write(x).await
+        }
+        let b = wb.to_builder().await;
+        let table = b.build().await;
+        b.delete().await;
+        table
+    }
+
+    #[tokio::test]
+    async fn test_build() {
+        let (k1, k2, k3) = (Key::new(), Key::new(), Key::new());
+        let sequence = vec![
+            Entry::new(k1, EntryData::Data("okay1".to_string())),
+            Entry::new(k2, EntryData::Data("ok2".into())),
+            Entry::new(k1, EntryData::Deleted),
+            Entry::new(k3, EntryData::Data("okayyy3".into())),
+        ];
+        let t = build_sstable(sequence, PathBuf::from("./12398123")).await;
+        let mut r = t.reader().await.unwrap();
+        assert_eq!(r.read(&k1).await, Some(EntryData::Deleted));
+        assert_eq!(r.read(&k2).await, Some(EntryData::Data("ok2".into())));
+        assert_eq!(r.read(&k3).await, Some(EntryData::Data("okayyy3".into())));
+        t.delete().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_merge() {
+        let (k1, k2, k3, k4, k5) = (Key::new(), Key::new(), Key::new(), Key::new(), Key::new());
+        let sequence1 = vec![
+            Entry::new(k1, EntryData::Deleted),
+            Entry::new(k2, EntryData::Data("ok2".into())),
+            Entry::new(k3, EntryData::Data("okayyy3".into())),
+            Entry::new(k4, EntryData::Data("okayy4".into())),
+        ];
+        let sequence2 = vec![
+            Entry::new(k1, EntryData::Data("okay1".to_string())),
+            Entry::new(k2, EntryData::Data("okk2".into())),
+            Entry::new(k5, EntryData::Deleted),
+        ];
+        let sequence3: Vec<Entry<String>> = vec![
+            Entry::new(k1, EntryData::Deleted),
+            Entry::new(k2, EntryData::Data("ok2".into())),
+            Entry::new(k3, EntryData::Data("okayyy3".into())),
+            Entry::new(k4, EntryData::Data("okayy4".into())),
+            Entry::new(k5, EntryData::Deleted),
+        ];
+        let t1 = build_sstable(sequence1, PathBuf::from("./57284909")).await;
+        let t2 = build_sstable(sequence2, PathBuf::from("./23497861")).await;
+        let t3 = SSTableBuilder::merge(&t1, &t2, PathBuf::from("./74598347")).await;
+
+        let mut r = t3.reader().await.unwrap();
+        for Entry { key, data } in sequence3 {
+            assert_eq!(r.read(&key).await.unwrap(), data)
+        }
+
+        t1.delete().await.unwrap();
+        t2.delete().await.unwrap();
+        t3.delete().await.unwrap();
+    }
+}
