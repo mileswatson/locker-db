@@ -32,6 +32,11 @@ pub struct SSTable<T> {
 }
 
 impl<T> SSTable<T> {
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> u64 {
+        self.offsets.size() / (ENTRY_SIZE as u64)
+    }
+
     pub async fn new(offsets: PathBuf, strings: PathBuf) -> SSTable<T> {
         SSTable {
             offsets: ImmutableFile::from_existing(offsets).await.unwrap(),

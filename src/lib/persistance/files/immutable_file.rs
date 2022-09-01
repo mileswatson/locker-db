@@ -38,6 +38,10 @@ impl ImmutableFile {
     pub async fn delete(self) -> Result<()> {
         remove_file(self.path).await.map_err(Error::from)
     }
+
+    pub fn size(&self) -> u64 {
+        self.size
+    }
 }
 
 pub struct FileReader<'a> {

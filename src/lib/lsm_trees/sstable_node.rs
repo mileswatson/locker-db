@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 use rocket::tokio::sync::RwLock;
 
@@ -10,11 +10,28 @@ pub struct SSTableNode<T> {
 }
 
 impl<T> SSTableNode<T> {
+    pub fn new(table: SSTable<T>, next: NextSSTable<T>) -> SSTableNode<T> {
+        SSTableNode { table, next }
+    }
+
     pub fn table(&self) -> &SSTable<T> {
         &self.table
     }
-    pub fn next(&self) -> Option<Arc<SSTableNode<T>>> {
-        Some(self.next.as_ref()?.blocking_read().clone())
+
+    pub async fn next_lock(&self) -> &Option<RwLock<Arc<SSTableNode<T>>>> {
+        &self.next
+    }
+
+    pub async fn next(&self) -> Option<Arc<SSTableNode<T>>> {
+        Some(self.next.as_ref()?.read().await.clone())
+    }
+}
+
+impl<T> Deref for SSTableNode<T> {
+    type Target = SSTable<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.table
     }
 }
 

@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, path::PathBuf};
+use std::{marker::PhantomData, path::PathBuf, sync::Arc};
 
 use dashmap::ReadOnlyView;
 use rocket::{
@@ -13,8 +13,9 @@ use crate::{
 
 use super::sstable::{OffsetEntry, SSTable};
 
+#[derive(Clone)]
 pub struct SSTableBuilder<T: Serialize> {
-    entries: ReadOnlyView<Key, EntryData<T>>,
+    entries: Arc<ReadOnlyView<Key, EntryData<T>>>,
     path: PathBuf,
     entry_type: PhantomData<T>,
 }
@@ -50,7 +51,7 @@ async fn copy_entry<T: Serialize>(
 impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
     pub fn new(entries: ReadOnlyView<Key, EntryData<T>>, path: PathBuf) -> SSTableBuilder<T> {
         SSTableBuilder {
-            entries,
+            entries: Arc::new(entries),
             path,
             entry_type: PhantomData::default(),
         }
