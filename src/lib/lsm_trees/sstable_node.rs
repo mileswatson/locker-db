@@ -18,7 +18,7 @@ impl<T> SSTableNode<T> {
         &self.table
     }
 
-    pub async fn next_lock(&self) -> &Option<RwLock<Arc<SSTableNode<T>>>> {
+    pub async fn next_lock(&self) -> &NextSSTable<T> {
         &self.next
     }
 
