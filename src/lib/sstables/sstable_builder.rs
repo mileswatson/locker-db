@@ -1,4 +1,8 @@
-use std::{marker::PhantomData, path::PathBuf, sync::Arc};
+use std::{
+    marker::PhantomData,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use dashmap::ReadOnlyView;
 use rocket::{
@@ -16,7 +20,8 @@ use super::sstable::{OffsetEntry, SSTable};
 #[derive(Clone)]
 pub struct SSTableBuilder<T: Serialize> {
     entries: Arc<ReadOnlyView<Key, EntryData<T>>>,
-    path: PathBuf,
+    dir: PathBuf,
+    id: String,
     entry_type: PhantomData<T>,
 }
 
@@ -49,26 +54,35 @@ async fn copy_entry<T: Serialize>(
 }
 
 impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
-    pub fn new(entries: ReadOnlyView<Key, EntryData<T>>, path: PathBuf) -> SSTableBuilder<T> {
+    pub fn new(
+        entries: ReadOnlyView<Key, EntryData<T>>,
+        dir: PathBuf,
+        id: String,
+    ) -> SSTableBuilder<T> {
         SSTableBuilder {
             entries: Arc::new(entries),
-            path,
+            dir,
+            id,
             entry_type: PhantomData::default(),
         }
+    }
+
+    fn path(&self) -> PathBuf {
+        self.dir.join(&self.id).with_extension("wal")
     }
 
     pub fn read(&self, key: &Key) -> Option<&EntryData<T>> {
         self.entries.get(key)
     }
 
-    pub async fn build(&self) -> SSTable<T> {
+    pub async fn build(&self, dir: &Path) -> SSTable<T> {
         let mut entries: Vec<_> = self.entries.iter().collect();
         entries.sort_by_key(|x| x.0);
 
-        let mut offsets = AppendableFile::new(self.path.with_extension("offsets"))
+        let mut offsets = AppendableFile::new(dir.join(&self.id).with_extension("offsets"))
             .await
             .unwrap();
-        let mut strings = AppendableFile::new(self.path.with_extension("strings"))
+        let mut strings = AppendableFile::new(dir.join(&self.id).with_extension("strings"))
             .await
             .unwrap();
 
@@ -91,11 +105,13 @@ impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
         .await
     }
 
-    pub async fn merge(young: &SSTable<T>, old: &SSTable<T>, path: PathBuf) -> SSTable<T> {
-        let mut offsets = AppendableFile::new(path.with_extension("offsets"))
+    pub async fn merge(young: &SSTable<T>, old: &SSTable<T>, dir: PathBuf) -> SSTable<T> {
+        let id = Key::new().hex();
+
+        let mut offsets = AppendableFile::new(dir.join(&id).with_extension("offsets"))
             .await
             .unwrap();
-        let mut strings = AppendableFile::new(path.with_extension("strings"))
+        let mut strings = AppendableFile::new(dir.join(&id).with_extension("strings"))
             .await
             .unwrap();
 
@@ -149,7 +165,7 @@ impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
     }
 
     pub async fn delete(self) {
-        remove_file(&self.path).await.unwrap();
+        remove_file(&self.path()).await.unwrap();
     }
 }
 
@@ -169,7 +185,7 @@ mod tests {
 
     #[tokio::test]
     async fn test() {
-        let wb = WriteBuffer::create(PathBuf::from("./123987578")).await;
+        let wb = WriteBuffer::create(PathBuf::from("./")).await;
         let (k1, k2, k3) = (Key::new(), Key::new(), Key::new());
         let sequence = vec![
             Entry::new(k1, EntryData::Data("okay1".to_string())),

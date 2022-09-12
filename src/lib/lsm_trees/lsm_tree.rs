@@ -142,12 +142,12 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeWriter<T> {
     async fn merge(&mut self) {
         let tree = &self.tree;
 
-        let builder = {
+        let (builder, dir) = {
             let lock = tree.read().await;
-            q!(lock.builders.back()).clone()
+            (q!(lock.builders.back()).clone(), lock.dir.clone())
         };
 
-        let table = builder.build().await;
+        let table = builder.build(&dir.join("trees")).await;
 
         {
             let mut lock = tree.write().await;

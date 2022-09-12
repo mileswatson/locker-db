@@ -148,14 +148,14 @@ mod tests {
 
     async fn build_sstable(
         sequence: impl IntoIterator<Item = Entry<String>>,
-        path: PathBuf,
+        dir: PathBuf,
     ) -> SSTable<String> {
-        let wb = WriteBuffer::create(path.with_extension("wal")).await;
+        let wb = WriteBuffer::create(dir).await;
         for x in sequence {
             wb.write(x).await
         }
         let b = wb.to_builder().await;
-        let table = b.build().await;
+        let table = b.build(&PathBuf::from("./")).await;
         b.delete().await;
         table
     }
@@ -169,7 +169,7 @@ mod tests {
             Entry::new(k1, EntryData::Deleted),
             Entry::new(k3, EntryData::Data("okayyy3".into())),
         ];
-        let t = build_sstable(sequence, PathBuf::from("./12398123")).await;
+        let t = build_sstable(sequence, PathBuf::from("./")).await;
         let mut r = t.reader().await.unwrap();
         assert_eq!(r.read(&k1).await, Some(EntryData::Deleted));
         assert_eq!(r.read(&k2).await, Some(EntryData::Data("ok2".into())));
@@ -198,9 +198,9 @@ mod tests {
             Entry::new(k4, EntryData::Data("okayy4".into())),
             Entry::new(k5, EntryData::Deleted),
         ];
-        let t1 = build_sstable(sequence1, PathBuf::from("./57284909")).await;
-        let t2 = build_sstable(sequence2, PathBuf::from("./23497861")).await;
-        let t3 = SSTableBuilder::merge(&t1, &t2, PathBuf::from("./74598347")).await;
+        let t1 = build_sstable(sequence1, PathBuf::from("./")).await;
+        let t2 = build_sstable(sequence2, PathBuf::from("./")).await;
+        let t3 = SSTableBuilder::merge(&t1, &t2, PathBuf::from("./")).await;
 
         let mut r = t3.reader().await.unwrap();
         for Entry { key, data } in sequence3 {
