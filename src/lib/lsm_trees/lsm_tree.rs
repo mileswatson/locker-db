@@ -24,6 +24,7 @@ macro_rules! q {
 }
 
 struct LSMTree<T: Serialize + DeserializeOwned> {
+    dir: PathBuf,
     buffer: WriteBuffer<T>,
     builders: VecDeque<SSTableBuilder<T>>,
     first: NextSSTable<T>,
@@ -34,33 +35,38 @@ pub struct LSMTreeReader<T: Serialize + DeserializeOwned> {
 }
 
 async fn merge_into_node<T: Serialize + DeserializeOwned>(
-    current_lock: &RwLock<Arc<SSTableNode<T>>>,
+    current: &RwLock<Arc<SSTableNode<T>>>,
 ) -> Option<Arc<SSTableNode<T>>> {
     loop {
-        let current = current_lock.read().await;
+        let second = {
+            let lock = current.read().await;
 
-        let second = current.next().await?;
+            let second = lock.next().await?;
 
-        if (3 * current.len()) / 4 <= second.len() {
-            break Some(second.clone());
+            if (3 * lock.len()) / 4 <= second.len() {
+                break Some(second);
+            }
+
+            second
+        };
+        {
+            let mut lock = current.write().await;
+
+            let merged = SSTableBuilder::merge(&lock, &second, PathBuf::from("./alsonew")).await;
+
+            *lock = Arc::new(SSTableNode::new(
+                merged,
+                second.next().await.map(RwLock::new),
+            ));
         }
-
-        drop(current);
-        let mut current = current_lock.write().await;
-
-        let merged = SSTableBuilder::merge(&current, &second, PathBuf::from("./alsonew")).await;
-
-        *current = Arc::new(SSTableNode::new(
-            merged,
-            second.next().await.map(RwLock::new),
-        ));
     }
 }
 
 impl<T: Serialize + DeserializeOwned + Clone + Send + Sync + 'static> LSMTreeReader<T> {
-    pub async fn new() -> LSMTreeReader<T> {
+    pub async fn new(dir: PathBuf) -> LSMTreeReader<T> {
         let lock = Arc::new(RwLock::new(LSMTree {
-            buffer: WriteBuffer::create(PathBuf::from("./wb")).await,
+            buffer: WriteBuffer::create(dir.join("wals").join(Key::new().hex())).await,
+            dir,
             builders: VecDeque::new(),
             first: None,
         }));
@@ -73,17 +79,19 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + Sync + 'static> LSMTreeRea
     }
 
     pub async fn read(&self, key: &Key) -> Option<T> {
-        let internal = self.internal.read().await;
-        if let Some(x) = internal.buffer.read(key) {
-            return x.into_data();
-        }
-        for x in internal.builders.iter() {
-            if let Some(x) = x.read(key) {
-                return x.data().cloned();
+        let mut current = {
+            let lock = self.internal.read().await;
+            if let Some(x) = lock.buffer.read(key) {
+                return x.into_data();
             }
-        }
-        let mut current = internal.first.as_ref()?.blocking_read().clone();
-        drop(internal);
+            for x in lock.builders.iter() {
+                if let Some(x) = x.read(key) {
+                    return x.data().cloned();
+                }
+            }
+            let current = lock.first.as_ref()?.blocking_read().clone();
+            current
+        };
         loop {
             if let Some(x) = current.reader().await.unwrap().read(key).await {
                 break x.into_data();
@@ -117,31 +125,43 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeWriter<T> {
     }
 
     pub async fn new_buffer(&mut self) {
-        let new_wb = WriteBuffer::create(PathBuf::from("./new")).await;
-        let mut internal = self.tree.write().await;
-        let old_buffer = replace(&mut internal.buffer, new_wb);
-        internal.builders.push_front(old_buffer.to_builder().await);
+        let dir = {
+            let lock = self.tree.read().await;
+            lock.dir.clone()
+        };
+
+        let new_wb = WriteBuffer::create(dir.join("wals").join(Key::new().hex())).await;
+
+        {
+            let mut lock = self.tree.write().await;
+            let old_buffer = replace(&mut lock.buffer, new_wb);
+            lock.builders.push_front(old_buffer.to_builder().await);
+        }
     }
 
     async fn merge(&mut self) {
         let tree = &self.tree;
 
-        let internal = tree.read().await;
-        let builder = q!(internal.builders.back()).clone();
-        drop(internal);
+        let builder = {
+            let lock = tree.read().await;
+            q!(lock.builders.back()).clone()
+        };
 
         let table = builder.build().await;
 
-        let mut internal = tree.write().await;
-        internal.first = Some(RwLock::new(Arc::new(SSTableNode::new(
-            table,
-            replace(&mut internal.first, None),
-        ))));
-        internal.builders.pop_back();
-        drop(internal);
+        {
+            let mut lock = tree.write().await;
+            lock.first = Some(RwLock::new(Arc::new(SSTableNode::new(
+                table,
+                replace(&mut lock.first, None),
+            ))));
+            lock.builders.pop_back();
+        }
 
-        let internal = tree.read().await;
-        let mut current = q!(merge_into_node(q!(internal.first.as_ref())).await);
+        let mut current = {
+            let lock = tree.read().await;
+            q!(merge_into_node(q!(lock.first.as_ref())).await)
+        };
 
         loop {
             let lock = q!(current.next_lock().await.as_ref());

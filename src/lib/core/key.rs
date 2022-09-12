@@ -1,3 +1,4 @@
+use hex::ToHex;
 use rand::Rng;
 use rocket::serde::{Deserialize, Serialize};
 
@@ -21,6 +22,10 @@ impl Key {
         match self {
             Key::Key(b) => b,
         }
+    }
+
+    pub fn hex(&self) -> String {
+        self.bytes().encode_hex()
     }
 }
 
