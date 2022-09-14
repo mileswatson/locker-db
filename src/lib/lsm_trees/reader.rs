@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use rocket::{
     serde::{DeserializeOwned, Serialize},
@@ -23,6 +27,7 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + Sync + 'static> LSMTreeRea
             dir,
             builders: VecDeque::new(),
             first: None,
+            nodes: HashMap::new(),
         }));
         let t = LSMTreeReader {
             internal: RLock::new(tree.clone()),

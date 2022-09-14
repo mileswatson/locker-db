@@ -25,6 +25,10 @@ impl<T> SSTableNode<T> {
     pub async fn next(&self) -> Option<Arc<SSTableNode<T>>> {
         Some(self.next.as_ref()?.read().await.clone())
     }
+
+    pub async fn delete(self) {
+        self.table.delete().await.unwrap();
+    }
 }
 
 impl<T> Deref for SSTableNode<T> {

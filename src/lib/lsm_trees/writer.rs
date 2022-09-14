@@ -60,6 +60,35 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeWriter<T> {
             self = q!(self.check_deletion());
             self.merge().await;
             self.new_buffer().await;
+            self.prune_dag().await;
+        }
+    }
+
+    async fn prune_dag(&mut self) {
+        loop {
+            let garbage: Vec<_> = {
+                let mut lock = self.tree.write().await;
+                let keys: Vec<_> = lock
+                    .nodes
+                    .iter()
+                    .filter(|x| Arc::strong_count(x.1) == 1)
+                    .map(|x| x.0)
+                    .cloned()
+                    .collect();
+                keys.iter()
+                    .map(|x| {
+                        Arc::try_unwrap(lock.nodes.remove(x).unwrap())
+                            .map_err(|_| ())
+                            .unwrap()
+                    })
+                    .collect()
+            };
+            if garbage.is_empty() {
+                break;
+            }
+            for x in garbage.into_iter() {
+                x.delete().await;
+            }
         }
     }
 
