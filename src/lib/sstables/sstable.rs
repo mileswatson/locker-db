@@ -26,6 +26,7 @@ pub struct OffsetEntry {
 }
 
 pub struct SSTable<T> {
+    id: String,
     offsets: ImmutableFile,
     strings: ImmutableFile,
     entry_type: PhantomData<T>,
@@ -37,12 +38,17 @@ impl<T> SSTable<T> {
         self.offsets.size() / (ENTRY_SIZE as u64)
     }
 
-    pub async fn new(offsets: PathBuf, strings: PathBuf) -> SSTable<T> {
+    pub async fn new(id: String, offsets: PathBuf, strings: PathBuf) -> SSTable<T> {
         SSTable {
+            id,
             offsets: ImmutableFile::from_existing(offsets).await.unwrap(),
             strings: ImmutableFile::from_existing(strings).await.unwrap(),
             entry_type: PhantomData::default(),
         }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
     pub async fn reader(&self) -> Result<SSTableReader<'_, T>> {

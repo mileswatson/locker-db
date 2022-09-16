@@ -67,6 +67,10 @@ impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
         }
     }
 
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
     fn path(&self) -> PathBuf {
         self.dir.join(&self.id).with_extension("wal")
     }
@@ -99,6 +103,7 @@ impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
             offset += string_bytes.len() as u64;
         }
         SSTable::new(
+            self.id.to_string(),
             offsets.close().await.unwrap(),
             strings.close().await.unwrap(),
         )
@@ -158,6 +163,7 @@ impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
         }
 
         SSTable::new(
+            id,
             offsets.close().await.unwrap(),
             strings.close().await.unwrap(),
         )

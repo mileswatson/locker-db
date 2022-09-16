@@ -59,8 +59,11 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeWriter<T> {
         loop {
             self = q!(self.check_deletion());
             self.merge().await;
+            self.save().await;
             self.new_buffer().await;
+            self.save().await;
             self.prune_dag().await;
+            self.save().await;
         }
     }
 
@@ -135,6 +138,14 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeWriter<T> {
             let lock = q!(current.next_lock().await.as_ref());
             current = q!(merge_into_node(lock).await);
         }
+    }
+
+    async fn save(&mut self) {
+        let (state, dir) = {
+            let lock = self.tree.read().await;
+            (lock.state().await, lock.dir.clone())
+        };
+        state.save(dir).await
     }
 
     pub(crate) fn new(tree: Arc<RwLock<LSMTree<T>>>) -> LSMTreeWriter<T> {

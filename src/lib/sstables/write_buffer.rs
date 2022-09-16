@@ -20,6 +20,10 @@ pub struct WriteBuffer<T: Serialize + DeserializeOwned> {
 }
 
 impl<T: Serialize + DeserializeOwned + Clone> WriteBuffer<T> {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
     pub async fn create(dir: PathBuf) -> WriteBuffer<T> {
         let id = Key::new().hex();
         let (wal, existing) = WAL::<Entry<T>>::open(dir.join(&id).with_extension("wal"))

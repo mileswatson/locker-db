@@ -31,12 +31,12 @@ impl State {
         bincode::deserialize(&bytes).unwrap()
     }
 
-    pub async fn save(&self, dir: PathBuf, id: String) {
+    pub async fn save(&self, dir: PathBuf) {
         let temp_path = dir.join(Key::new().hex()).with_extension("state");
         let bytes = bincode::serialize(self).unwrap();
         ImmutableFile::create(temp_path.clone(), &bytes)
             .await
             .unwrap();
-        rename(temp_path, dir.join(id)).await.unwrap();
+        rename(temp_path, dir.join("state")).await.unwrap();
     }
 }
