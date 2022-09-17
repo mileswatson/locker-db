@@ -10,7 +10,10 @@ use crate::{
     sstables::{sstable_builder::SSTableBuilder, write_buffer::WriteBuffer},
 };
 
-use super::{lsm_tree::LSMTree, sstable_node::SSTableNode};
+use super::{
+    lsm_tree::{Heap, LSMTree},
+    sstable_node::SSTableNode,
+};
 
 pub(super) struct LSMTreeWriter<T: Serialize + DeserializeOwned> {
     tree: Arc<RwLock<LSMTree<T>>>,
@@ -18,6 +21,7 @@ pub(super) struct LSMTreeWriter<T: Serialize + DeserializeOwned> {
 
 async fn merge_into_node<T: Serialize + DeserializeOwned>(
     current: &RwLock<Arc<SSTableNode<T>>>,
+    heap: &Heap<T>,
 ) -> Option<Arc<SSTableNode<T>>> {
     loop {
         let second = {
@@ -36,10 +40,7 @@ async fn merge_into_node<T: Serialize + DeserializeOwned>(
 
             let merged = SSTableBuilder::merge(&lock, &second, PathBuf::from("./alsonew")).await;
 
-            *lock = Arc::new(SSTableNode::new(
-                merged,
-                second.next().await.map(RwLock::new),
-            ));
+            *lock = SSTableNode::new(merged, second.next().await.map(RwLock::new), heap);
         }
     }
 }
@@ -70,9 +71,9 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeWriter<T> {
     async fn prune_dag(&mut self) {
         loop {
             let garbage: Vec<_> = {
-                let mut lock = self.tree.write().await;
-                let keys: Vec<_> = lock
-                    .nodes
+                let lock = self.tree.write().await;
+                let mut nodes = lock.heap.lock().await;
+                let keys: Vec<_> = nodes
                     .iter()
                     .filter(|x| Arc::strong_count(x.1) == 1)
                     .map(|x| x.0)
@@ -80,7 +81,7 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeWriter<T> {
                     .collect();
                 keys.iter()
                     .map(|x| {
-                        Arc::try_unwrap(lock.nodes.remove(x).unwrap())
+                        Arc::try_unwrap(nodes.remove(x).unwrap())
                             .map_err(|_| ())
                             .unwrap()
                     })
@@ -122,21 +123,22 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeWriter<T> {
 
         {
             let mut lock = tree.write().await;
-            lock.first = Some(RwLock::new(Arc::new(SSTableNode::new(
-                table,
-                replace(&mut lock.first, None),
-            ))));
+            let x = replace(&mut lock.first, None);
+            let first = Some(RwLock::new(SSTableNode::new(table, x, &lock.heap)));
+
+            lock.first = first;
             lock.builders.pop_back();
         }
 
         let mut current = {
             let lock = tree.read().await;
-            q!(merge_into_node(q!(lock.first.as_ref())).await)
+            q!(merge_into_node(q!(lock.first.as_ref()), &lock.heap).await)
         };
 
         loop {
+            let tree = tree.read().await;
             let lock = q!(current.next_lock().await.as_ref());
-            current = q!(merge_into_node(lock).await);
+            current = q!(merge_into_node(lock, &tree.heap).await);
         }
     }
 

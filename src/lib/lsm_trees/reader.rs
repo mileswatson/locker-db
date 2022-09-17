@@ -6,7 +6,10 @@ use std::{
 
 use rocket::{
     serde::{DeserializeOwned, Serialize},
-    tokio::{spawn, sync::RwLock},
+    tokio::{
+        spawn,
+        sync::{Mutex, RwLock},
+    },
 };
 
 use crate::{
@@ -24,10 +27,10 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + Sync + 'static> LSMTreeRea
     pub async fn new(dir: PathBuf) -> LSMTreeReader<T> {
         let tree = Arc::new(RwLock::new(LSMTree {
             buffer: WriteBuffer::create(dir.join("wals").join(Key::new().hex())).await,
-            dir,
             builders: VecDeque::new(),
             first: None,
-            nodes: HashMap::new(),
+            heap: Mutex::new(HashMap::new()),
+            dir,
         }));
         let t = LSMTreeReader {
             internal: RLock::new(tree.clone()),

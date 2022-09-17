@@ -4,6 +4,8 @@ use rocket::tokio::sync::RwLock;
 
 use crate::sstables::sstable::SSTable;
 
+use super::lsm_tree::Heap;
+
 #[derive(Debug)]
 pub struct SSTableNode<T> {
     table: SSTable<T>,
@@ -11,8 +13,11 @@ pub struct SSTableNode<T> {
 }
 
 impl<T> SSTableNode<T> {
-    pub fn new(table: SSTable<T>, next: NextSSTable<T>) -> SSTableNode<T> {
-        SSTableNode { table, next }
+    pub fn new(table: SSTable<T>, next: NextSSTable<T>, heap: &Heap<T>) -> Arc<SSTableNode<T>> {
+        let node = Arc::new(SSTableNode { table, next });
+        heap.blocking_lock()
+            .insert(node.table.id().to_string(), node.clone());
+        node
     }
 
     pub fn table(&self) -> &SSTable<T> {
