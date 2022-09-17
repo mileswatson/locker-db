@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, marker::PhantomData, path::PathBuf};
+use std::{cmp::Ordering, marker::PhantomData, path::Path};
 
 use anyhow::{anyhow, Result};
 use rocket::{
@@ -25,6 +25,7 @@ pub struct OffsetEntry {
     pub length: u64,
 }
 
+#[derive(Debug)]
 pub struct SSTable<T> {
     id: String,
     offsets: ImmutableFile,
@@ -38,12 +39,16 @@ impl<T> SSTable<T> {
         self.offsets.size() / (ENTRY_SIZE as u64)
     }
 
-    pub async fn new(id: String, offsets: PathBuf, strings: PathBuf) -> SSTable<T> {
+    pub async fn new(dir: &Path, id: String) -> SSTable<T> {
         SSTable {
-            id,
-            offsets: ImmutableFile::from_existing(offsets).await.unwrap(),
-            strings: ImmutableFile::from_existing(strings).await.unwrap(),
+            offsets: ImmutableFile::from_existing(dir.join(&id).with_extension("offsets"))
+                .await
+                .unwrap(),
+            strings: ImmutableFile::from_existing(dir.join(&id).with_extension("strings"))
+                .await
+                .unwrap(),
             entry_type: PhantomData::default(),
+            id,
         }
     }
 

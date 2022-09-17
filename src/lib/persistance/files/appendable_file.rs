@@ -6,6 +6,7 @@ use rocket::tokio::{
     io::AsyncWriteExt,
 };
 
+#[derive(Debug)]
 pub struct AppendableFile {
     file: File,
     path: PathBuf,

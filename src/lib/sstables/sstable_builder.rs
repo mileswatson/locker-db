@@ -17,7 +17,7 @@ use crate::{
 
 use super::sstable::{OffsetEntry, SSTable};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SSTableBuilder<T: Serialize> {
     entries: Arc<ReadOnlyView<Key, EntryData<T>>>,
     dir: PathBuf,
@@ -102,12 +102,7 @@ impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
             offsets.append(&offset_bytes).await.unwrap();
             offset += string_bytes.len() as u64;
         }
-        SSTable::new(
-            self.id.to_string(),
-            offsets.close().await.unwrap(),
-            strings.close().await.unwrap(),
-        )
-        .await
+        SSTable::new(dir, self.id.to_string()).await
     }
 
     pub async fn merge(young: &SSTable<T>, old: &SSTable<T>, dir: PathBuf) -> SSTable<T> {
@@ -162,12 +157,7 @@ impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
             }
         }
 
-        SSTable::new(
-            id,
-            offsets.close().await.unwrap(),
-            strings.close().await.unwrap(),
-        )
-        .await
+        SSTable::new(&dir, id).await
     }
 
     pub async fn delete(self) {

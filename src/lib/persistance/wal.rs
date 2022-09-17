@@ -5,6 +5,7 @@ use rocket::serde::{DeserializeOwned, Serialize};
 
 use super::files::{AppendableFile, ImmutableFile};
 
+#[derive(Debug)]
 pub struct WAL<T: Serialize + DeserializeOwned> {
     file: AppendableFile,
     log_type: PhantomData<T>,

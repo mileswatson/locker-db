@@ -11,6 +11,7 @@ use crate::persistance::wal::WAL;
 
 use super::sstable_builder::SSTableBuilder;
 
+#[derive(Debug)]
 pub struct WriteBuffer<T: Serialize + DeserializeOwned> {
     entries: DashMap<Key, EntryData<T>>,
     dir: PathBuf,

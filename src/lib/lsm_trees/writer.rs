@@ -145,7 +145,7 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeWriter<T> {
             let lock = self.tree.read().await;
             (lock.state().await, lock.dir.clone())
         };
-        state.save(dir).await
+        state.save(&dir).await
     }
 
     pub(crate) fn new(tree: Arc<RwLock<LSMTree<T>>>) -> LSMTreeWriter<T> {

@@ -4,6 +4,7 @@ use rocket::tokio::sync::RwLock;
 
 use crate::sstables::sstable::SSTable;
 
+#[derive(Debug)]
 pub struct SSTableNode<T> {
     table: SSTable<T>,
     next: NextSSTable<T>,

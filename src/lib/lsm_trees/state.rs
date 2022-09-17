@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use rocket::{
     serde::{Deserialize, Serialize},
@@ -10,9 +10,9 @@ use crate::{core::key::Key, persistance::files::ImmutableFile};
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct State {
-    wal: String,
-    builders: Vec<String>,
-    tables: Vec<String>,
+    pub wal: String,
+    pub builders: Vec<String>,
+    pub tables: Vec<String>,
 }
 
 impl State {
@@ -24,14 +24,16 @@ impl State {
         }
     }
 
-    pub async fn load(path: PathBuf) -> State {
-        let file = ImmutableFile::from_existing(path).await.unwrap();
+    pub async fn load(dir: &Path) -> State {
+        let file = ImmutableFile::from_existing(dir.join("state"))
+            .await
+            .unwrap();
         let mut reader = file.new_reader().await.unwrap();
         let bytes = reader.read_all().await.unwrap();
         bincode::deserialize(&bytes).unwrap()
     }
 
-    pub async fn save(&self, dir: PathBuf) {
+    pub async fn save(&self, dir: &Path) {
         let temp_path = dir.join(Key::new().hex()).with_extension("state");
         let bytes = bincode::serialize(self).unwrap();
         ImmutableFile::create(temp_path.clone(), &bytes)

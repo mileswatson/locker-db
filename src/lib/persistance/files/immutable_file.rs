@@ -6,6 +6,7 @@ use rocket::tokio::{
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
 };
 
+#[derive(Debug)]
 pub struct ImmutableFile {
     pub(super) path: PathBuf,
     pub(super) size: u64,
