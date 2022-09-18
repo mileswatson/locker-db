@@ -76,7 +76,6 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTree<T> {
         let mut builders = VecDeque::new();
         for id in s.builders {
             let (w, f) = WriteBuffer::from(dir.clone(), id).await.to_builder();
-            let x = RwLock::new(5);
             f.close().await.unwrap();
             builders.push_back(w);
         }
