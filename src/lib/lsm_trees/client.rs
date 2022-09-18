@@ -1,8 +1,9 @@
 use std::{path::PathBuf, sync::Arc};
 
+use parking_lot::RwLock;
 use rocket::{
     serde::{DeserializeOwned, Serialize},
-    tokio::{fs::metadata, spawn, sync::RwLock},
+    tokio::{fs::metadata, spawn},
 };
 
 use crate::core::{key::Key, rlock::RLock};
@@ -40,14 +41,16 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + Sync + 'static> LSMTreeCli
                     return x.data().cloned();
                 }
             }
-            let current = lock.first.as_ref()?.blocking_read().clone();
-            current
+            {
+                let lock = lock.first.read();
+                lock.as_ref()?.clone()
+            }
         };
         loop {
             if let Some(x) = current.reader().await.unwrap().read(key).await {
                 break x.into_data();
             }
-            current = current.next().await?
+            current = current.next()?
         }
     }
 }

@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::{collections::VecDeque, sync::Arc};
 
+use parking_lot::{Mutex, RwLock};
 use rocket::serde::{DeserializeOwned, Serialize};
 use rocket::tokio::fs::{create_dir, read_dir, remove_dir, remove_file};
-use rocket::tokio::sync::{Mutex, RwLock};
 
 use crate::sstables::sstable::SSTable;
 use crate::sstables::sstable_builder::SSTableBuilder;
@@ -13,14 +13,14 @@ use crate::sstables::write_buffer::WriteBuffer;
 use super::sstable_node::{NextSSTable, SSTableNode};
 use super::state::State;
 
-pub type Heap<T> = Mutex<HashMap<String, Arc<SSTableNode<T>>>>;
+pub type Heap<T> = Arc<Mutex<HashMap<String, Arc<SSTableNode<T>>>>>;
 
 #[derive(Debug)]
 pub struct LSMTree<T: Serialize + DeserializeOwned> {
     pub(super) dir: PathBuf,
     pub(super) buffer: WriteBuffer<T>,
     pub(super) builders: VecDeque<SSTableBuilder<T>>,
-    pub(super) first: NextSSTable<T>,
+    pub(super) first: Arc<NextSSTable<T>>,
     pub(super) heap: Heap<T>,
 }
 
@@ -49,10 +49,10 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTree<T> {
             buffer: WriteBuffer::create(dir.join("wals")).await,
             dir: dir.clone(),
             builders: VecDeque::new(),
-            first: None,
-            heap: Mutex::new(HashMap::new()),
+            first: Arc::new(RwLock::new(None)),
+            heap: Arc::new(Mutex::new(HashMap::new())),
         };
-        tree.state().await.save(&dir).await;
+        tree.state().save(&dir).await;
         tree
     }
 
@@ -75,40 +75,40 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTree<T> {
 
         let mut builders = VecDeque::new();
         for id in s.builders {
-            builders.push_back(WriteBuffer::from(dir.clone(), id).await.to_builder().await)
+            let (w, f) = WriteBuffer::from(dir.clone(), id).await.to_builder();
+            let x = RwLock::new(5);
+            f.close().await.unwrap();
+            builders.push_back(w);
         }
-        let mut first = None;
-        let heap = Mutex::new(HashMap::new());
+        let mut first = RwLock::new(None);
+        let heap = Arc::new(Mutex::new(HashMap::new()));
         for id in s.tables.into_iter().rev() {
             let table = SSTableNode::new(
                 SSTable::new(&dir.join("tables"), id.clone()).await,
                 first,
                 &heap,
             );
-            first = Some(RwLock::new(table));
+            first = RwLock::new(Some(table));
         }
 
         LSMTree {
             buffer: WriteBuffer::open(dir.join("wals"), s.wal).await,
             builders,
-            first,
+            first: Arc::new(first),
             heap,
             dir,
         }
     }
 
-    pub(super) async fn state(&self) -> State {
+    pub(super) fn state(&self) -> State {
         let mut nodes = Vec::new();
-        let mut current = match &self.first {
-            Some(x) => Some(x.read().await.clone()),
-            None => None,
-        };
+        let mut current = self.first.read().as_ref().cloned();
         loop {
             current = match current {
                 None => break,
                 Some(x) => {
                     nodes.push(x.table().id().to_string());
-                    x.next().await
+                    x.next()
                 }
             };
         }

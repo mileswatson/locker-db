@@ -1,4 +1,4 @@
-use rocket::tokio::sync::{RwLock, RwLockReadGuard};
+use parking_lot::{RwLock, RwLockReadGuard};
 use std::sync::Arc;
 
 pub struct RLock<T> {
@@ -11,6 +11,6 @@ impl<T> RLock<T> {
     }
 
     pub async fn read(&self) -> RwLockReadGuard<T> {
-        self.lock.read().await
+        self.lock.read()
     }
 }

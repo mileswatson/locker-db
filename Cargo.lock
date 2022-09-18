@@ -612,6 +612,7 @@ dependencies = [
  "bincode",
  "dashmap",
  "hex",
+ "parking_lot",
  "rand",
  "rocket",
 ]

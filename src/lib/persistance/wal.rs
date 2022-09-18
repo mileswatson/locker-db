@@ -91,10 +91,9 @@ mod test {
 
     #[tokio::test]
     pub async fn wal_test() {
-        let (mut wal, remaining) = WAL::<String>::open(PathBuf::from("./983724.wal"))
+        let mut wal = WAL::<String>::create(PathBuf::from("./983724.wal"))
             .await
             .unwrap();
-        assert_eq!(remaining.len(), 0);
         wal.write(&"Hi!".to_string()).await.unwrap();
         wal.write(&"Hello there!".to_string()).await.unwrap();
         wal.write(&"Sup bro".to_string()).await.unwrap();

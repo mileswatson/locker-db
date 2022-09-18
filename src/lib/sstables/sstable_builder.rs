@@ -192,7 +192,8 @@ mod tests {
         for x in sequence {
             wb.write(x).await
         }
-        let b = wb.to_builder().await;
+        let (b, f) = wb.to_builder();
+        f.close().await.unwrap();
         assert_eq!(b.read(&k1), Some(&EntryData::Deleted));
         assert_eq!(b.read(&k2), Some(&EntryData::Data("ok2".into())));
         assert_eq!(b.read(&k3), Some(&EntryData::Data("okayyy3".into())));

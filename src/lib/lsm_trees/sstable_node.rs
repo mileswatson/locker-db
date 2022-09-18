@@ -1,6 +1,6 @@
 use std::{ops::Deref, sync::Arc};
 
-use rocket::tokio::sync::RwLock;
+use parking_lot::RwLock;
 
 use crate::sstables::sstable::SSTable;
 
@@ -15,7 +15,7 @@ pub struct SSTableNode<T> {
 impl<T> SSTableNode<T> {
     pub fn new(table: SSTable<T>, next: NextSSTable<T>, heap: &Heap<T>) -> Arc<SSTableNode<T>> {
         let node = Arc::new(SSTableNode { table, next });
-        heap.blocking_lock()
+        heap.lock()
             .insert(node.table.id().to_string(), node.clone());
         node
     }
@@ -24,12 +24,12 @@ impl<T> SSTableNode<T> {
         &self.table
     }
 
-    pub async fn next_lock(&self) -> &NextSSTable<T> {
+    pub fn next_lock(&self) -> &NextSSTable<T> {
         &self.next
     }
 
-    pub async fn next(&self) -> Option<Arc<SSTableNode<T>>> {
-        Some(self.next.as_ref()?.read().await.clone())
+    pub fn next(&self) -> Option<Arc<SSTableNode<T>>> {
+        Some(self.next.read().as_ref()?.clone())
     }
 
     pub async fn delete(self) {
@@ -45,4 +45,4 @@ impl<T> Deref for SSTableNode<T> {
     }
 }
 
-pub type NextSSTable<T> = Option<RwLock<Arc<SSTableNode<T>>>>;
+pub type NextSSTable<T> = RwLock<Option<Arc<SSTableNode<T>>>>;
