@@ -1,5 +1,5 @@
 pub mod lsm_tree;
-pub mod reader;
+pub mod client;
 pub mod sstable_node;
 pub mod state;
-pub mod writer;
+pub mod service;

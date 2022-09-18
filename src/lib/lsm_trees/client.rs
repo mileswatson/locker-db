@@ -7,25 +7,25 @@ use rocket::{
 
 use crate::core::{key::Key, rlock::RLock};
 
-use super::{lsm_tree::LSMTree, writer::LSMTreeWriter};
+use super::{lsm_tree::LSMTree, service::LSMTreeService};
 
-pub struct LSMTreeReader<T: Serialize + DeserializeOwned> {
+pub struct LSMTreeClient<T: Serialize + DeserializeOwned> {
     internal: RLock<LSMTree<T>>,
 }
 
-impl<T: Serialize + DeserializeOwned + Clone + Send + Sync + 'static> LSMTreeReader<T> {
-    pub async fn new(dir: PathBuf) -> LSMTreeReader<T> {
+impl<T: Serialize + DeserializeOwned + Clone + Send + Sync + 'static> LSMTreeClient<T> {
+    pub async fn new(dir: PathBuf) -> LSMTreeClient<T> {
         let tree = if metadata(&dir).await.is_ok() {
             LSMTree::load(dir).await
         } else {
             LSMTree::new(dir).await
         };
         let tree = Arc::new(RwLock::new(tree));
-        let t = LSMTreeReader {
+        let t = LSMTreeClient {
             internal: RLock::new(tree.clone()),
         };
-        let merger = LSMTreeWriter::new(tree);
-        spawn(merger.run());
+        let service = LSMTreeService::new(tree);
+        spawn(service.run());
         t
     }
 

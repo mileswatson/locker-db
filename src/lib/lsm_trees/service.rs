@@ -5,17 +5,14 @@ use rocket::{
     tokio::sync::RwLock,
 };
 
-use crate::{
-    core::key::Key,
-    sstables::{sstable_builder::SSTableBuilder, write_buffer::WriteBuffer},
-};
+use crate::sstables::{sstable_builder::SSTableBuilder, write_buffer::WriteBuffer};
 
 use super::{
     lsm_tree::{Heap, LSMTree},
     sstable_node::SSTableNode,
 };
 
-pub(super) struct LSMTreeWriter<T: Serialize + DeserializeOwned> {
+pub(super) struct LSMTreeService<T: Serialize + DeserializeOwned> {
     tree: Arc<RwLock<LSMTree<T>>>,
 }
 
@@ -45,14 +42,14 @@ async fn merge_into_node<T: Serialize + DeserializeOwned>(
     }
 }
 
-impl<T: Serialize + DeserializeOwned + Clone> LSMTreeWriter<T> {
-    fn check_deletion(self) -> Option<LSMTreeWriter<T>> {
+impl<T: Serialize + DeserializeOwned + Clone> LSMTreeService<T> {
+    fn check_deletion(self) -> Option<LSMTreeService<T>> {
         match Arc::try_unwrap(self.tree) {
             Ok(x) => {
                 drop(x.into_inner());
                 None
             }
-            Err(x) => Some(LSMTreeWriter { tree: x }),
+            Err(x) => Some(LSMTreeService { tree: x }),
         }
     }
 
@@ -150,7 +147,7 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeWriter<T> {
         state.save(&dir).await
     }
 
-    pub(crate) fn new(tree: Arc<RwLock<LSMTree<T>>>) -> LSMTreeWriter<T> {
-        LSMTreeWriter { tree }
+    pub(crate) fn new(tree: Arc<RwLock<LSMTree<T>>>) -> LSMTreeService<T> {
+        LSMTreeService { tree }
     }
 }
