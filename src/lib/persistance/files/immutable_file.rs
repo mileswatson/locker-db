@@ -1,4 +1,7 @@
-use std::{io::SeekFrom, path::PathBuf};
+use std::{
+    io::SeekFrom,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Error, Result};
 use rocket::tokio::{
@@ -13,6 +16,10 @@ pub struct ImmutableFile {
 }
 
 impl ImmutableFile {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     pub async fn create(path: PathBuf, data: &[u8]) -> Result<ImmutableFile> {
         let mut file = OpenOptions::new()
             .write(true)

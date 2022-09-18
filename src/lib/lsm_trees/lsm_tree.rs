@@ -6,7 +6,6 @@ use rocket::serde::{DeserializeOwned, Serialize};
 use rocket::tokio::fs::{create_dir, read_dir, remove_dir, remove_file};
 use rocket::tokio::sync::{Mutex, RwLock};
 
-use crate::core::key::Key;
 use crate::sstables::sstable::SSTable;
 use crate::sstables::sstable_builder::SSTableBuilder;
 use crate::sstables::write_buffer::WriteBuffer;
@@ -46,13 +45,15 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTree<T> {
         create_dir(&dir).await.unwrap();
         create_dir(dir.join("tables")).await.unwrap();
         create_dir(dir.join("wals")).await.unwrap();
-        LSMTree {
-            buffer: WriteBuffer::create(dir.join("wals").join(Key::new().hex())).await,
-            dir,
+        let tree = LSMTree {
+            buffer: WriteBuffer::create(dir.join("wals")).await,
+            dir: dir.clone(),
             builders: VecDeque::new(),
             first: None,
             heap: Mutex::new(HashMap::new()),
-        }
+        };
+        tree.state().await.save(&dir).await;
+        tree
     }
 
     pub(super) async fn load(dir: PathBuf) -> LSMTree<T> {
@@ -64,7 +65,11 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTree<T> {
         drain_dir(&dir.join("wals"), &wals).await;
         drain_dir(
             &dir,
-            &["state".to_string(), "trees".to_string(), "wals".to_string()],
+            &[
+                "state".to_string(),
+                "tables".to_string(),
+                "wals".to_string(),
+            ],
         )
         .await;
 
@@ -84,7 +89,7 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTree<T> {
         }
 
         LSMTree {
-            buffer: WriteBuffer::create(dir.join("wals").join(s.wal)).await,
+            buffer: WriteBuffer::open(dir.join("wals"), s.wal).await,
             builders,
             first,
             heap,

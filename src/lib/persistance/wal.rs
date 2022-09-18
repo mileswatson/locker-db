@@ -36,26 +36,35 @@ impl<T: Serialize + DeserializeOwned> WAL<T> {
         Ok(())
     }
 
-    pub async fn open(path: PathBuf) -> Result<(WAL<T>, Vec<T>)> {
+    async fn new(file: ImmutableFile) -> Result<(WAL<T>, Vec<T>)> {
         let mut entries = Vec::new();
 
-        if let Result::Ok(file) = ImmutableFile::from_existing(path.clone()).await {
-            let mut reader = file.new_reader().await?;
-            let bytes = reader.read_all().await?;
-            let mut remaining = bytes.as_slice();
+        let mut reader = file.new_reader().await?;
+        let bytes = reader.read_all().await?;
+        let mut remaining = bytes.as_slice();
 
-            while let Some((entry, r)) = read_entry(remaining) {
-                entries.push(entry);
-                remaining = r;
-            }
-        };
+        while let Some((entry, r)) = read_entry(remaining) {
+            entries.push(entry);
+            remaining = r;
+        }
 
         let wal = WAL {
-            file: AppendableFile::new(path).await?,
+            file: AppendableFile::new(file.path().to_owned()).await?,
             log_type: PhantomData::default(),
         };
 
         Ok((wal, entries))
+    }
+
+    pub async fn create(path: PathBuf) -> Result<WAL<T>> {
+        dbg!(&path);
+        WAL::new(ImmutableFile::create(path, &[]).await.unwrap())
+            .await
+            .map(|x| x.0)
+    }
+
+    pub async fn open(path: PathBuf) -> Result<(WAL<T>, Vec<T>)> {
+        WAL::new(ImmutableFile::from_existing(path.clone()).await.unwrap()).await
     }
 
     pub async fn clear(&mut self) -> Result<()> {

@@ -102,7 +102,7 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeWriter<T> {
             lock.dir.clone()
         };
 
-        let new_wb = WriteBuffer::create(dir.join("wals").join(Key::new().hex())).await;
+        let new_wb = WriteBuffer::create(dir.join("wals")).await;
 
         {
             let mut lock = self.tree.write().await;

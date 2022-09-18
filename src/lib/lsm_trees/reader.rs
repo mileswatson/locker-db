@@ -1,21 +1,11 @@
-use std::{
-    collections::{HashMap, VecDeque},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{path::PathBuf, sync::Arc};
 
 use rocket::{
     serde::{DeserializeOwned, Serialize},
-    tokio::{
-        spawn,
-        sync::{Mutex, RwLock},
-    },
+    tokio::{fs::metadata, spawn, sync::RwLock},
 };
 
-use crate::{
-    core::{key::Key, rlock::RLock},
-    sstables::write_buffer::WriteBuffer,
-};
+use crate::core::{key::Key, rlock::RLock};
 
 use super::{lsm_tree::LSMTree, writer::LSMTreeWriter};
 
@@ -25,13 +15,12 @@ pub struct LSMTreeReader<T: Serialize + DeserializeOwned> {
 
 impl<T: Serialize + DeserializeOwned + Clone + Send + Sync + 'static> LSMTreeReader<T> {
     pub async fn new(dir: PathBuf) -> LSMTreeReader<T> {
-        let tree = Arc::new(RwLock::new(LSMTree {
-            buffer: WriteBuffer::create(dir.join("wals").join(Key::new().hex())).await,
-            builders: VecDeque::new(),
-            first: None,
-            heap: Mutex::new(HashMap::new()),
-            dir,
-        }));
+        let tree = if metadata(&dir).await.is_ok() {
+            LSMTree::load(dir).await
+        } else {
+            LSMTree::new(dir).await
+        };
+        let tree = Arc::new(RwLock::new(tree));
         let t = LSMTreeReader {
             internal: RLock::new(tree.clone()),
         };

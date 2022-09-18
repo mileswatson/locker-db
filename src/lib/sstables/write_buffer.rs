@@ -25,13 +25,26 @@ impl<T: Serialize + DeserializeOwned + Clone> WriteBuffer<T> {
         &self.id
     }
 
-    pub async fn create(dir: PathBuf) -> WriteBuffer<T> {
-        let id = Key::new().hex();
+    pub async fn open(dir: PathBuf, id: String) -> WriteBuffer<T> {
         let (wal, existing) = WAL::<Entry<T>>::open(dir.join(&id).with_extension("wal"))
             .await
             .unwrap();
         WriteBuffer {
             entries: existing.into_iter().map(|x| (x.key, x.data)).collect(),
+            dir,
+            id,
+            file: Mutex::new(wal),
+            entry_type: PhantomData::default(),
+        }
+    }
+
+    pub async fn create(dir: PathBuf) -> WriteBuffer<T> {
+        let id = Key::new().hex();
+        let wal = WAL::<Entry<T>>::create(dir.join(&id).with_extension("wal"))
+            .await
+            .unwrap();
+        WriteBuffer {
+            entries: DashMap::new(),
             dir,
             id,
             file: Mutex::new(wal),
