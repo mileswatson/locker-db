@@ -1,6 +1,6 @@
 use std::{ops::Deref, sync::Arc};
 
-use parking_lot::RwLock;
+use arc_swap::ArcSwap;
 
 use crate::sstables::sstable::SSTable;
 
@@ -13,10 +13,14 @@ pub struct SSTableNode<T> {
 }
 
 impl<T> SSTableNode<T> {
-    pub fn new(table: SSTable<T>, next: NextSSTable<T>, heap: &Heap<T>) -> Arc<SSTableNode<T>> {
-        let node = Arc::new(SSTableNode { table, next });
-        heap.lock()
-            .insert(node.table.id().to_string(), node.clone());
+    pub fn new(
+        table: SSTable<T>,
+        next: NextSSTable<T>,
+        heap: &Heap<T>,
+    ) -> Arc<Option<SSTableNode<T>>> {
+        let id = table.id().to_string();
+        let node = Arc::new(Some(SSTableNode { table, next }));
+        heap.lock().insert(id, node.clone());
         node
     }
 
@@ -28,8 +32,8 @@ impl<T> SSTableNode<T> {
         &self.next
     }
 
-    pub fn next(&self) -> Option<Arc<SSTableNode<T>>> {
-        Some(self.next.read().as_ref()?.clone())
+    pub fn next(&self) -> Arc<Option<SSTableNode<T>>> {
+        self.next.load_full()
     }
 
     pub async fn delete(self) {
@@ -45,4 +49,4 @@ impl<T> Deref for SSTableNode<T> {
     }
 }
 
-pub type NextSSTable<T> = RwLock<Option<Arc<SSTableNode<T>>>>;
+pub type NextSSTable<T> = ArcSwap<Option<SSTableNode<T>>>;

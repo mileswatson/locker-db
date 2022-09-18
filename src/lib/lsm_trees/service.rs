@@ -1,5 +1,6 @@
-use std::{mem::replace, ops::DerefMut, path::PathBuf, sync::Arc};
+use std::{mem::replace, path::PathBuf, sync::Arc};
 
+use arc_swap::ArcSwap;
 use parking_lot::RwLock;
 use rocket::serde::{DeserializeOwned, Serialize};
 
@@ -15,23 +16,29 @@ pub(super) struct LSMTreeService<T: Serialize + DeserializeOwned> {
 }
 
 async fn merge_into_node<T: Serialize + DeserializeOwned>(
-    current: &RwLock<Option<Arc<SSTableNode<T>>>>,
+    current: &ArcSwap<Option<SSTableNode<T>>>,
     heap: &Heap<T>,
-) -> Option<Arc<SSTableNode<T>>> {
+) -> Arc<Option<SSTableNode<T>>> {
     loop {
-        let internal = current.read().clone()?;
-        let second = {
-            let second = internal.next()?;
-
-            if (3 * internal.len()) / 4 <= second.len() {
-                break Some(second);
-            }
-
-            second
+        let first = current.load_full();
+        let first = match first.as_ref() {
+            Some(x) => x,
+            None => return first,
         };
-        let merged = SSTableBuilder::merge(&internal, &second, PathBuf::from("./alsonew")).await;
+
+        let second = first.next();
+        let second = match second.as_ref() {
+            Some(x) => {
+                if (3 * first.len()) / 4 <= x.len() {
+                    return second.clone();
+                }
+                x
+            }
+            None => return second.clone(),
+        };
+        let merged = SSTableBuilder::merge(first, second, PathBuf::from("./alsonew")).await;
         {
-            *current.write() = Some(SSTableNode::new(merged, RwLock::new(second.next()), heap));
+            current.store(SSTableNode::new(merged, ArcSwap::from(second.next()), heap));
         }
     }
 }
@@ -81,7 +88,7 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeService<T> {
             if garbage.is_empty() {
                 break;
             }
-            for x in garbage.into_iter() {
+            for x in garbage.into_iter().flatten() {
                 x.delete().await;
             }
         }
@@ -118,28 +125,25 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeService<T> {
         {
             let mut lock = tree.write();
             {
-                let mut lock2 = lock.first.write();
-                let x = replace(lock2.deref_mut(), None);
-                *lock2 = Some(SSTableNode::new(table, RwLock::new(x), &lock.heap));
+                let x = lock.first.load_full();
+                lock.first
+                    .store(SSTableNode::new(table, ArcSwap::from(x), &lock.heap));
             }
             lock.builders.pop_back();
         }
 
-        let mut current = {
-            let (first, heap) = {
-                let lock = tree.read();
-                (lock.first.clone(), lock.heap.clone())
-            };
-            q!(merge_into_node(first.as_ref(), &heap).await)
+        let (first, heap) = {
+            let lock = tree.read();
+            (lock.first.clone(), lock.heap.clone())
         };
 
+        let mut current = merge_into_node(first.as_ref(), &heap).await;
+
         loop {
-            let heap = {
-                let lock = tree.read();
-                lock.heap.clone()
+            current = match current.as_ref() {
+                Some(current) => merge_into_node(current.next_lock(), &heap).await,
+                None => return,
             };
-            let lock = current.next_lock();
-            current = q!(merge_into_node(lock, &heap).await);
         }
     }
 

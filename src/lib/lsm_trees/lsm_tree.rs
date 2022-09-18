@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::{collections::VecDeque, sync::Arc};
 
-use parking_lot::{Mutex, RwLock};
+use arc_swap::ArcSwap;
+use parking_lot::Mutex;
 use rocket::serde::{DeserializeOwned, Serialize};
 use rocket::tokio::fs::{create_dir, read_dir, remove_dir, remove_file};
 
@@ -13,7 +14,7 @@ use crate::sstables::write_buffer::WriteBuffer;
 use super::sstable_node::{NextSSTable, SSTableNode};
 use super::state::State;
 
-pub type Heap<T> = Arc<Mutex<HashMap<String, Arc<SSTableNode<T>>>>>;
+pub type Heap<T> = Arc<Mutex<HashMap<String, Arc<Option<SSTableNode<T>>>>>>;
 
 #[derive(Debug)]
 pub struct LSMTree<T: Serialize + DeserializeOwned> {
@@ -49,7 +50,7 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTree<T> {
             buffer: WriteBuffer::create(dir.join("wals")).await,
             dir: dir.clone(),
             builders: VecDeque::new(),
-            first: Arc::new(RwLock::new(None)),
+            first: Arc::new(ArcSwap::from_pointee(None)),
             heap: Arc::new(Mutex::new(HashMap::new())),
         };
         tree.state().save(&dir).await;
@@ -79,7 +80,7 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTree<T> {
             f.close().await.unwrap();
             builders.push_back(w);
         }
-        let mut first = RwLock::new(None);
+        let mut first = ArcSwap::from_pointee(None);
         let heap = Arc::new(Mutex::new(HashMap::new()));
         for id in s.tables.into_iter().rev() {
             let table = SSTableNode::new(
@@ -87,7 +88,7 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTree<T> {
                 first,
                 &heap,
             );
-            first = RwLock::new(Some(table));
+            first = ArcSwap::from(table);
         }
 
         LSMTree {
@@ -101,9 +102,9 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTree<T> {
 
     pub(super) fn state(&self) -> State {
         let mut nodes = Vec::new();
-        let mut current = self.first.read().as_ref().cloned();
+        let mut current = self.first.load_full();
         loop {
-            current = match current {
+            current = match current.as_ref() {
                 None => break,
                 Some(x) => {
                     nodes.push(x.table().id().to_string());

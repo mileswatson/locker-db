@@ -41,16 +41,14 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + Sync + 'static> LSMTreeCli
                     return x.data().cloned();
                 }
             }
-            {
-                let lock = lock.first.read();
-                lock.as_ref()?.clone()
-            }
+            lock.first.load_full()
         };
         loop {
-            if let Some(x) = current.reader().await.unwrap().read(key).await {
+            let c = current.as_ref().as_ref()?;
+            if let Some(x) = c.reader().await.unwrap().read(key).await {
                 break x.into_data();
             }
-            current = current.next()?
+            current = c.next()
         }
     }
 }
