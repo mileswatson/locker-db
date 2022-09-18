@@ -165,8 +165,7 @@ mod tests {
         for x in sequence {
             wb.write(x).await
         }
-        let (b, f) = wb.to_builder();
-        f.close().await.unwrap();
+        let b = wb.to_builder().await;
         let table = b.build(&PathBuf::from("./")).await;
         b.delete().await;
         table

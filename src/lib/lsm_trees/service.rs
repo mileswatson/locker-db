@@ -1,7 +1,6 @@
 use std::{mem::replace, path::PathBuf, sync::Arc};
 
 use arc_swap::ArcSwap;
-use parking_lot::RwLock;
 use rocket::serde::{DeserializeOwned, Serialize};
 
 use crate::sstables::{sstable_builder::SSTableBuilder, write_buffer::WriteBuffer};
@@ -12,7 +11,7 @@ use super::{
 };
 
 pub(super) struct LSMTreeService<T: Serialize + DeserializeOwned> {
-    tree: Arc<RwLock<LSMTree<T>>>,
+    tree: Arc<LSMTree<T>>,
 }
 
 async fn merge_into_node<T: Serialize + DeserializeOwned>(
@@ -47,7 +46,7 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeService<T> {
     fn check_deletion(self) -> Option<LSMTreeService<T>> {
         match Arc::try_unwrap(self.tree) {
             Ok(x) => {
-                drop(x.into_inner());
+                drop(x);
                 None
             }
             Err(x) => Some(LSMTreeService { tree: x }),
@@ -69,8 +68,7 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeService<T> {
     async fn prune_dag(&mut self) {
         loop {
             let garbage: Vec<_> = {
-                let lock = self.tree.write();
-                let mut nodes = lock.heap.lock();
+                let mut nodes = self.tree.heap.lock();
                 let keys: Vec<_> = nodes
                     .iter()
                     .filter(|x| Arc::strong_count(x.1) == 1)
@@ -95,67 +93,49 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeService<T> {
     }
 
     async fn new_buffer(&mut self) {
-        let dir = {
-            let lock = self.tree.read();
-            lock.dir.clone()
-        };
-
+        let dir = self.tree.dir.clone();
         let new_wb = WriteBuffer::create(dir.join("wals")).await;
-
-        let file = {
-            let mut lock = self.tree.write();
+        {
+            let mut lock = self.tree.buffers.write().await;
             let old_buffer = replace(&mut lock.buffer, new_wb);
-            let (builder, file) = old_buffer.to_builder();
+            let builder = old_buffer.to_builder().await;
             lock.builders.push_front(builder);
-            file
         };
-        file.close().await.unwrap();
     }
 
     async fn merge(&mut self) {
         let tree = &self.tree;
 
-        let (builder, dir) = {
-            let lock = tree.read();
-            (q!(lock.builders.back()).clone(), lock.dir.clone())
+        let builder = {
+            let lock = tree.buffers.read().await;
+            q!(lock.builders.back()).clone()
         };
 
-        let table = builder.build(&dir.join("tables")).await;
+        let table = builder.build(&tree.dir.join("tables")).await;
 
         {
-            let mut lock = tree.write();
-            {
-                let x = lock.first.load_full();
-                lock.first
-                    .store(SSTableNode::new(table, ArcSwap::from(x), &lock.heap));
-            }
+            let mut lock = tree.buffers.write().await;
+            let first = tree.first.load_full();
+            tree.first
+                .store(SSTableNode::new(table, ArcSwap::from(first), &tree.heap));
             lock.builders.pop_back();
         }
 
-        let (first, heap) = {
-            let lock = tree.read();
-            (lock.first.clone(), lock.heap.clone())
-        };
-
-        let mut current = merge_into_node(first.as_ref(), &heap).await;
+        let mut current = merge_into_node(tree.first.as_ref(), &tree.heap).await;
 
         loop {
             current = match current.as_ref() {
-                Some(current) => merge_into_node(current.next_lock(), &heap).await,
+                Some(current) => merge_into_node(current.next_lock(), &tree.heap).await,
                 None => return,
             };
         }
     }
 
     async fn save(&mut self) {
-        let (state, dir) = {
-            let lock = self.tree.read();
-            (lock.state(), lock.dir.clone())
-        };
-        state.save(&dir).await
+        self.tree.state().await.save(&self.tree.dir).await
     }
 
-    pub(crate) fn new(tree: Arc<RwLock<LSMTree<T>>>) -> LSMTreeService<T> {
+    pub(crate) fn new(tree: Arc<LSMTree<T>>) -> LSMTreeService<T> {
         LSMTreeService { tree }
     }
 }

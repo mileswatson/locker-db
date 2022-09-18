@@ -1,24 +1,31 @@
-use std::collections::HashMap;
-
-use parking_lot::RwLock;
+use locker_db::{
+    core::key::{Key, KEY_SIZE},
+    lsm_trees::client::LSMTreeClient,
+};
 use rocket::{http::Status, State};
 
 #[macro_use]
 extern crate rocket;
 
 #[get("/<key>")]
-async fn get(key: &str, map: &State<RwLock<HashMap<String, String>>>) -> Result<String, Status> {
-    map.read().get(key).cloned().ok_or(Status::NotFound)
+async fn get(key: &str, map: &State<LSMTreeClient<String>>) -> Result<String, Status> {
+    let mut slice = [0u8; KEY_SIZE];
+    hex::decode_to_slice(key, &mut slice).map_err(|_| Status::BadRequest)?;
+    map.read(&Key::Key(slice)).await.ok_or(Status::NotFound)
 }
 
 #[post("/<key>", data = "<value>")]
-fn set(key: String, value: String, map: &State<RwLock<HashMap<String, String>>>) -> Status {
-    map.write().insert(key, value);
+async fn set(key: String, value: String, map: &State<LSMTreeClient<String>>) -> Status {
+    let mut slice = [0u8; KEY_SIZE];
+    if hex::decode_to_slice(key, &mut slice).is_err() {
+        return Status::BadRequest;
+    }
+    map.write(Key::Key(slice), Some(value)).await;
     Status::Ok
 }
 
 #[launch]
-fn rocket() -> _ {
-    let map = RwLock::new(HashMap::<String, String>::new());
+async fn rocket() -> _ {
+    let map = LSMTreeClient::<String>::new("./testing".into()).await;
     rocket::build().manage(map).mount("/", routes![get, set])
 }

@@ -52,12 +52,10 @@ impl<T: Serialize + DeserializeOwned + Clone> WriteBuffer<T> {
         }
     }
 
-    pub fn to_builder(self) -> (SSTableBuilder<T>, WAL<Entry<T>>) {
+    pub async fn to_builder(self) -> SSTableBuilder<T> {
         let x = self.file.into_inner();
-        (
-            SSTableBuilder::new(self.entries.into_read_only(), self.dir, self.id),
-            x,
-        )
+        x.close().await.unwrap();
+        SSTableBuilder::new(self.entries.into_read_only(), self.dir, self.id)
     }
 
     pub async fn write(&self, entry: Entry<T>) {
