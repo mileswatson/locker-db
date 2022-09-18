@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use dashmap::DashMap;
 use rocket::serde::{DeserializeOwned, Serialize};
-use rocket::tokio::sync::Mutex;
+use rocket::tokio;
 
 use crate::core::entry::EntryData;
 use crate::core::{entry::Entry, key::Key};
@@ -16,7 +16,7 @@ pub struct WriteBuffer<T: Serialize + DeserializeOwned> {
     entries: DashMap<Key, EntryData<T>>,
     dir: PathBuf,
     id: String,
-    file: Mutex<WAL<Entry<T>>>,
+    file: tokio::sync::Mutex<WAL<Entry<T>>>,
     entry_type: PhantomData<T>,
 }
 
@@ -33,7 +33,7 @@ impl<T: Serialize + DeserializeOwned + Clone> WriteBuffer<T> {
             entries: existing.into_iter().map(|x| (x.key, x.data)).collect(),
             dir,
             id,
-            file: Mutex::new(wal),
+            file: tokio::sync::Mutex::new(wal),
             entry_type: PhantomData::default(),
         }
     }
@@ -47,7 +47,7 @@ impl<T: Serialize + DeserializeOwned + Clone> WriteBuffer<T> {
             entries: DashMap::new(),
             dir,
             id,
-            file: Mutex::new(wal),
+            file: tokio::sync::Mutex::new(wal),
             entry_type: PhantomData::default(),
         }
     }
@@ -59,10 +59,11 @@ impl<T: Serialize + DeserializeOwned + Clone> WriteBuffer<T> {
     }
 
     pub async fn write(&self, entry: Entry<T>) {
-        let mut file = self.file.lock().await;
-        file.write(&entry).await.unwrap();
-        self.entries.insert(entry.key, entry.data);
-        drop(file);
+        {
+            let mut lock = self.file.lock().await;
+            lock.write(&entry).await.unwrap();
+            self.entries.insert(entry.key, entry.data);
+        }
     }
 
     pub fn read(&self, key: &Key) -> Option<EntryData<T>> {
@@ -77,7 +78,7 @@ impl<T: Serialize + DeserializeOwned + Clone> WriteBuffer<T> {
             entries: existing.into_iter().map(|x| (x.key, x.data)).collect(),
             dir,
             id,
-            file: Mutex::new(wal),
+            file: tokio::sync::Mutex::new(wal),
             entry_type: PhantomData::default(),
         }
     }
