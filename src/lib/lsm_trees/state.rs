@@ -7,7 +7,7 @@ use rocket::{
 
 use crate::{core::key::Key, persistance::files::ImmutableFile};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(crate = "rocket::serde")]
 pub struct State {
     pub wal: String,

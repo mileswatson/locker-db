@@ -2,6 +2,8 @@ use locker_db::{
     core::key::{Key, KEY_SIZE},
     lsm_trees::client::LSMTreeClient,
 };
+use log::LevelFilter;
+use pretty_env_logger::env_logger::Target;
 use rocket::{http::Status, State};
 
 #[macro_use]
@@ -36,6 +38,10 @@ async fn delete(key: String, map: &State<LSMTreeClient<String>>) -> Status {
 
 #[launch]
 async fn rocket() -> _ {
+    pretty_env_logger::formatted_builder()
+        .target(Target::Stdout)
+        .filter_level(LevelFilter::Debug)
+        .init();
     let map = LSMTreeClient::<String>::new("./testing".into()).await;
     rocket::build()
         .manage(map)

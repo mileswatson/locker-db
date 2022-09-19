@@ -1,5 +1,6 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{fmt::Debug, path::PathBuf, sync::Arc};
 
+use log::{debug, info};
 use rocket::{
     serde::{DeserializeOwned, Serialize},
     tokio::{fs::metadata, spawn},
@@ -16,7 +17,7 @@ pub struct LSMTreeClient<T: Serialize + DeserializeOwned> {
     tree: Arc<LSMTree<T>>,
 }
 
-impl<T: Serialize + DeserializeOwned + Clone + Send + Sync + 'static> LSMTreeClient<T> {
+impl<T: Serialize + DeserializeOwned + Clone + Send + Sync + Debug + 'static> LSMTreeClient<T> {
     pub async fn new(dir: PathBuf) -> LSMTreeClient<T> {
         let tree = if metadata(&dir).await.is_ok() {
             LSMTree::load(dir).await
@@ -31,6 +32,7 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + Sync + 'static> LSMTreeCli
     }
 
     pub async fn write(&self, key: Key, data: Option<T>) {
+        info!("Setting {} to {:?}", key.hex(), data);
         self.tree
             .buffers
             .read()
@@ -47,19 +49,29 @@ impl<T: Serialize + DeserializeOwned + Clone + Send + Sync + 'static> LSMTreeCli
         {
             let lock = self.tree.buffers.read().await;
             if let Some(x) = lock.buffer.read(key) {
+                debug!("Found {} in main buffer {}.", key.hex(), lock.buffer.id());
                 return x.into_data();
             }
-            for x in lock.builders.iter() {
-                if let Some(x) = x.read(key) {
+            for b in lock.builders.iter() {
+                if let Some(x) = b.read(key) {
+                    debug!("Found {} in builder {}.", key.hex(), b.id());
                     return x.data().cloned();
                 }
             }
         }
         let mut current = self.tree.first.load_full();
         loop {
-            let c = current.as_ref().as_ref()?;
+            let c = match current.as_ref().as_ref() {
+                Some(c) => c,
+                None => {
+                    debug!("Did not find {}.", key.hex());
+                    return None;
+                }
+            };
             if let Some(x) = c.reader().await.unwrap().read(key).await {
-                break x.into_data();
+                let data = x.into_data();
+                debug!("Found {}={:?} in table {}.", key.hex(), &data, c.id());
+                break data;
             }
             current = c.next()
         }

@@ -57,7 +57,6 @@ impl<T: Serialize + DeserializeOwned> WAL<T> {
     }
 
     pub async fn create(path: PathBuf) -> Result<WAL<T>> {
-        dbg!(&path);
         WAL::new(ImmutableFile::create(path, &[]).await.unwrap())
             .await
             .map(|x| x.0)
