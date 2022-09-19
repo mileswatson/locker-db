@@ -1,4 +1,4 @@
-use std::{mem::replace, path::PathBuf, sync::Arc};
+use std::{mem::replace, path::Path, sync::Arc};
 
 use arc_swap::ArcSwap;
 use rocket::serde::{DeserializeOwned, Serialize};
@@ -17,6 +17,7 @@ pub(super) struct LSMTreeService<T: Serialize + DeserializeOwned> {
 async fn merge_into_node<T: Serialize + DeserializeOwned>(
     current: &ArcSwap<Option<SSTableNode<T>>>,
     heap: &Heap<T>,
+    dir: &Path,
 ) -> Arc<Option<SSTableNode<T>>> {
     loop {
         let first = current.load_full();
@@ -35,7 +36,7 @@ async fn merge_into_node<T: Serialize + DeserializeOwned>(
             }
             None => return second.clone(),
         };
-        let merged = SSTableBuilder::merge(first, second, PathBuf::from("./alsonew")).await;
+        let merged = SSTableBuilder::merge(first, second, dir).await;
         {
             current.store(SSTableNode::new(merged, ArcSwap::from(second.next()), heap));
         }
@@ -56,12 +57,10 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeService<T> {
     pub async fn run(mut self) {
         loop {
             self = q!(self.check_deletion());
-            self.merge().await;
-            self.save().await;
-            self.new_buffer().await;
-            self.save().await;
+            if self.merge().await || self.new_buffer().await {
+                self.save().await
+            }
             self.prune_dag().await;
-            self.save().await;
         }
     }
 
@@ -92,8 +91,14 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeService<T> {
         }
     }
 
-    async fn new_buffer(&mut self) {
+    async fn new_buffer(&mut self) -> bool {
         let dir = self.tree.dir.clone();
+        {
+            let lock = self.tree.buffers.read().await;
+            if lock.buffer.size() <= 5 {
+                return false;
+            }
+        }
         let new_wb = WriteBuffer::create(dir.join("wals")).await;
         {
             let mut lock = self.tree.buffers.write().await;
@@ -101,14 +106,18 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeService<T> {
             let builder = old_buffer.to_builder().await;
             lock.builders.push_front(builder);
         };
+        true
     }
 
-    async fn merge(&mut self) {
+    async fn merge(&mut self) -> bool {
         let tree = &self.tree;
 
         let builder = {
             let lock = tree.buffers.read().await;
-            q!(lock.builders.back()).clone()
+            match lock.builders.back() {
+                Some(x) => x.clone(),
+                None => return false,
+            }
         };
 
         let table = builder.build(&tree.dir.join("tables")).await;
@@ -121,12 +130,14 @@ impl<T: Serialize + DeserializeOwned + Clone> LSMTreeService<T> {
             lock.builders.pop_back();
         }
 
-        let mut current = merge_into_node(tree.first.as_ref(), &tree.heap).await;
+        let mut current = merge_into_node(tree.first.as_ref(), &tree.heap, &tree.dir).await;
 
         loop {
-            current = match current.as_ref() {
-                Some(current) => merge_into_node(current.next_lock(), &tree.heap).await,
-                None => return,
+            match current.as_ref() {
+                Some(c) => {
+                    current = merge_into_node(c.next_lock(), &tree.heap, &tree.dir).await;
+                }
+                None => return true,
             };
         }
     }

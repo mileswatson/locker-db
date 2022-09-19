@@ -211,7 +211,7 @@ mod tests {
         ];
         let t1 = build_sstable(sequence1, PathBuf::from("./")).await;
         let t2 = build_sstable(sequence2, PathBuf::from("./")).await;
-        let t3 = SSTableBuilder::merge(&t1, &t2, PathBuf::from("./")).await;
+        let t3 = SSTableBuilder::merge(&t1, &t2, &PathBuf::from("./")).await;
 
         let mut r = t3.reader().await.unwrap();
         for Entry { key, data } in sequence3 {

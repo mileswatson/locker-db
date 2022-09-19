@@ -105,7 +105,7 @@ impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
         SSTable::new(dir, self.id.to_string()).await
     }
 
-    pub async fn merge(young: &SSTable<T>, old: &SSTable<T>, dir: PathBuf) -> SSTable<T> {
+    pub async fn merge(young: &SSTable<T>, old: &SSTable<T>, dir: &Path) -> SSTable<T> {
         let id = Key::new().hex();
 
         let mut offsets = AppendableFile::new(dir.join(&id).with_extension("offsets"))
@@ -157,7 +157,7 @@ impl<T: Serialize + DeserializeOwned> SSTableBuilder<T> {
             }
         }
 
-        SSTable::new(&dir, id).await
+        SSTable::new(dir, id).await
     }
 
     pub async fn delete(self) {

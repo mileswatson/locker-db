@@ -66,6 +66,10 @@ impl<T: Serialize + DeserializeOwned + Clone> WriteBuffer<T> {
         }
     }
 
+    pub fn size(&self) -> usize {
+        self.entries.len()
+    }
+
     pub fn read(&self, key: &Key) -> Option<EntryData<T>> {
         self.entries.get(key).map(|x| x.clone())
     }
